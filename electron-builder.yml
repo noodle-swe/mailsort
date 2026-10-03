@@ -1,0 +1,18 @@
+appId: dev.mailsort.app
+productName: MailSort
+directories:
+  output: dist
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+# The stdio MCP bridge is started by other MCP clients in Node mode; keep it as plain files.
+asarUnpack:
+  - out/main/mcp-bridge.js
+  - out/main/chunks/**
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

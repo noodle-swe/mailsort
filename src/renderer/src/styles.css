@@ -1,0 +1,222 @@
+@import 'tailwindcss';
+
+/*
+ * MailSort design tokens.
+ * - One neutral family (green-tinted gray, matched to the backdrop photo) and an ink primary.
+ *   Tag colors are the only hues in the UI.
+ * - Radius scale: panels 16px, controls 10px, chips and avatars 7px.
+ * - Panels are "frosted" with a pre-blurred copy of the photo (background-attachment: fixed keeps it
+ *   aligned with the sharp photo behind), so there is no live backdrop-filter cost.
+ */
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-field: var(--field);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-danger: var(--danger);
+  --font-sans: 'Geist Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  --ease-soft: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root {
+  --ink: #17201b;
+  --ink-soft: #34403a;
+  --muted: #56635c;
+  --line: rgb(23 32 27 / 0.09);
+  --field: rgb(23 32 27 / 0.055);
+  --hover: rgb(23 32 27 / 0.05);
+  --selected: rgb(23 32 27 / 0.09);
+  --primary: #1c2822;
+  --on-primary: #f3f6f2;
+  --danger: #a8443a;
+  --glass: rgb(249 250 248 / 0.8);
+  --glass-side: rgb(245 247 244 / 0.52);
+  --glass-solid: rgb(249 250 248 / 0.95);
+  --glass-ring: rgb(255 255 255 / 0.6);
+  --panel-shadow: 0 1px 0 rgb(255 255 255 / 0.65) inset, 0 18px 40px -18px rgb(20 44 30 / 0.45);
+  --photo-dim: rgb(236 242 237 / 0.08);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e7ece8;
+    --ink-soft: #c9d1cc;
+    --muted: #97a39c;
+    --line: rgb(231 236 232 / 0.08);
+    --field: rgb(231 236 232 / 0.065);
+    --hover: rgb(231 236 232 / 0.06);
+    --selected: rgb(231 236 232 / 0.105);
+    --primary: #e4ebe5;
+    --on-primary: #121714;
+    --danger: #e0857b;
+    --glass: rgb(15 19 17 / 0.78);
+    --glass-side: rgb(15 19 17 / 0.56);
+    --glass-solid: rgb(17 21 19 / 0.96);
+    --glass-ring: rgb(255 255 255 / 0.07);
+    --panel-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 20px 44px -16px rgb(0 0 0 / 0.65);
+    --photo-dim: rgb(5 9 7 / 0.5);
+    color-scheme: dark;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-feature-settings: 'ss01';
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+  background: #33433a url('./assets/backdrop.webp') center / cover no-repeat fixed;
+}
+
+/* Theme-dependent dimming of the photo. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--photo-dim);
+  pointer-events: none;
+}
+
+/* In the components layer so Tailwind utilities (rounded-*, etc.) can override them. */
+@layer components {
+  .glass,
+  .glass-side,
+  .glass-solid {
+    --tint: var(--glass);
+    background:
+      linear-gradient(var(--tint), var(--tint)),
+      #33433a url('./assets/backdrop-blur.webp') center / cover no-repeat fixed;
+    border-radius: 16px;
+    box-shadow: var(--panel-shadow);
+    outline: 1px solid var(--glass-ring);
+    outline-offset: -1px;
+  }
+  .glass-side {
+    --tint: var(--glass-side);
+  }
+  .glass-solid {
+    --tint: var(--glass-solid);
+  }
+
+  /* Tag chip colors adapt to the theme. --tag is set inline per tag. */
+  .chip {
+    color: color-mix(in oklab, var(--tag) 82%, var(--ink));
+    background: color-mix(in srgb, var(--tag) 14%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    .chip {
+      color: color-mix(in oklab, var(--tag) 62%, white);
+      background: color-mix(in srgb, var(--tag) 22%, transparent);
+    }
+  }
+
+  .press {
+    transition:
+      background-color 180ms var(--ease-soft),
+      color 180ms var(--ease-soft),
+      transform 160ms var(--ease-soft),
+      opacity 180ms var(--ease-soft);
+  }
+  .press:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, var(--field) 0%, var(--selected) 50%, var(--field) 100%);
+    background-size: 200% 100%;
+    border-radius: 6px;
+  }
+}
+
+/* Window drag regions for the frameless title bar. */
+.drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+input,
+textarea,
+select,
+.selectable {
+  user-select: text;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--ink) 70%, transparent);
+  outline-offset: 2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Content enters with a short rise; panels themselves only fade (a transform would detach their fixed backdrop). */
+  .enter {
+    animation: enter 520ms var(--ease-soft) both;
+    animation-delay: var(--d, 0ms);
+  }
+  .fade {
+    animation: fade 420ms var(--ease-soft) both;
+    animation-delay: var(--d, 0ms);
+  }
+  .skeleton {
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--muted) 32%, transparent);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}

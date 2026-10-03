@@ -1,0 +1,254 @@
+[
+  {
+    "expected": "Applied",
+    "fromName": "Stripe Recruiting", "fromAddr": "no-reply@greenhouse.io",
+    "subject": "Thank you for applying to Stripe",
+    "text": "Hi Sam,\nThanks for applying to the Data Analyst role at Stripe. We've received your application and our team will review it. If your experience matches our needs, we'll be in touch.\nBest,\nStripe Recruiting",
+    "linkDomains": ["greenhouse.io"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX", "CATEGORY_UPDATES"]
+  },
+  {
+    "expected": "Applied",
+    "fromName": "Workday", "fromAddr": "acme@myworkday.com",
+    "subject": "Application Received - Senior Product Analyst (R-10234)",
+    "text": "Dear Sam Lee,\nYour application for Senior Product Analyst (R-10234) has been received. You can track the status of your application in your candidate home.\nRegards, Acme Talent Acquisition",
+    "linkDomains": ["acme.wd5.myworkdayjobs.com"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Applied",
+    "fromName": "Lever", "fromAddr": "no-reply@hire.lever.co",
+    "subject": "Your application to Figma",
+    "text": "Hi Sam, thank you for your interest in Figma! We have received your application for Product Designer and will carefully review your background.",
+    "linkDomains": ["jobs.lever.co"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Applied",
+    "fromName": "Notion Careers", "fromAddr": "careers@notion.so",
+    "subject": "We got your application!",
+    "text": "Hey Sam! Your application for Solutions Engineer was successfully submitted. Sit tight - a member of our team will reach out if there's a fit.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Rejected",
+    "fromName": "Airbnb Recruiting", "fromAddr": "no-reply@greenhouse.io",
+    "subject": "Update on your application",
+    "text": "Hi Sam,\nThank you for your interest in Airbnb and for taking the time to apply. After careful consideration, we have decided to move forward with other candidates whose experience more closely matches our needs.\nWe wish you the best.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Rejected",
+    "fromName": "Globex HR", "fromAddr": "hr@globex.com",
+    "subject": "Your application for Marketing Manager",
+    "text": "Dear Sam,\nWe regret to inform you that we will not be moving forward with your application at this time. We appreciate your interest in Globex.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Rejected",
+    "fromName": "Ashby", "fromAddr": "no-reply@ashbyhq.com",
+    "subject": "Linear - Software Engineer",
+    "text": "Hi Sam, thanks so much for applying to Linear. Unfortunately, the position has now been filled. We'll keep your details on file for future roles.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Rejected",
+    "fromName": "Datadog Talent", "fromAddr": "talent@datadoghq.com",
+    "subject": "Following up on your candidacy",
+    "text": "Hi Sam,\nI wanted to personally reach out. Unfortunately, the team has decided not to proceed with your candidacy for the Account Executive role. It was a difficult decision given the strong pool of applicants.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Meeting",
+    "fromName": "Jane Park", "fromAddr": "jane.park@shopify.com",
+    "subject": "Shopify - next steps",
+    "text": "Hi Sam, I'm a recruiter at Shopify and I'd love to set up a 30 minute intro call about the Data Engineer role. Please grab a time that works for you here: [link:calendly.com]\nThanks, Jane",
+    "linkDomains": ["calendly.com"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Meeting",
+    "fromName": "Google Calendar", "fromAddr": "calendar-notification@google.com",
+    "subject": "Invitation: Interview - Sam Lee / Hiring Manager @ Tue Oct 7, 2pm - 3pm",
+    "text": "You have been invited to the following event. Interview - Sam Lee / Hiring Manager. Join with Google Meet [link:meet.google.com]",
+    "linkDomains": ["meet.google.com", "calendar.google.com"], "hasCalendarInvite": true, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Meeting",
+    "fromName": "GoodTime", "fromAddr": "scheduling@goodtime.io",
+    "subject": "Please share your availability for interviews with Robinhood",
+    "text": "Hi Sam, the Robinhood team would like to schedule your onsite interviews. Please share your availability using the link below: [link:goodtime.io]",
+    "linkDomains": ["goodtime.io"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Meeting",
+    "fromName": "Tom Becker", "fromAddr": "tom@smallstartup.io",
+    "subject": "Re: Founding engineer role",
+    "text": "Hey Sam, loved your background. Are you free for a quick chat this Thursday or Friday afternoon? Let me know what time works and I'll send an invite.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Meeting",
+    "fromName": "Microsoft Teams", "fromAddr": "recruiting@contoso.com",
+    "subject": "Interview: Contoso Business Analyst - Round 2",
+    "text": "Hi Sam, please find the details for your second round interview below. Join the meeting: [link:teams.microsoft.com] Meeting ID: 284 112 909",
+    "linkDomains": ["teams.microsoft.com"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Questions",
+    "fromName": "Priya Shah", "fromAddr": "priya@initech.com",
+    "subject": "Quick question about your application",
+    "text": "Hi Sam, thanks for applying to Initech. Before we move ahead, could you tell us your salary expectations and whether you will require visa sponsorship now or in the future?",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Questions",
+    "fromName": "Hooli Recruiting", "fromAddr": "recruiting@hooli.com",
+    "subject": "Additional documents needed",
+    "text": "Hello Sam, as part of our process please send us a copy of your portfolio and two professional references by Friday. Reply to this email with the documents.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Questions",
+    "fromName": "HackerRank", "fromAddr": "noreply@hackerrank.com",
+    "subject": "Umbrella Corp has invited you to take a coding challenge",
+    "text": "Hi Sam, Umbrella Corp has invited you to complete a coding assessment for the Backend Engineer role. The test takes 90 minutes. Please complete it within 5 days.",
+    "linkDomains": ["hackerrank.com"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Questions",
+    "fromName": "Laura Chen", "fromAddr": "laura.chen@wayne.com",
+    "subject": "Re: Data Scientist application",
+    "text": "Hi Sam, what is your earliest start date and are you open to working from our Chicago office three days a week?",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Needs Attention",
+    "fromName": "Workday", "fromAddr": "stark@myworkday.com",
+    "subject": "Complete your application",
+    "text": "Hi Sam, you started an application for Financial Analyst but haven't finished your application yet. Complete your application before the posting closes.",
+    "linkDomains": ["stark.wd1.myworkdayjobs.com"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Needs Attention",
+    "fromName": "Oracle Recruiting", "fromAddr": "no-reply@oraclecloud.com",
+    "subject": "Action required: your application is incomplete",
+    "text": "Dear candidate, your application for Cloud Engineer is incomplete. Missing required information: resume upload, work authorization. Please log in to finish the application.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Needs Attention",
+    "fromName": "SmartRecruiters", "fromAddr": "noreply@smartrecruiters.com",
+    "subject": "Don't forget to submit your application to Bosch",
+    "text": "Hi Sam, it looks like your application to Bosch is still in draft. Finish the application to be considered for the role.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Junk",
+    "fromName": "LinkedIn Job Alerts", "fromAddr": "jobalerts-noreply@linkedin.com",
+    "subject": "30+ new jobs for 'data analyst' in Toronto",
+    "text": "Your job alert for data analyst. Data Analyst at Shopify. Senior Data Analyst at RBC. See all jobs. Unsubscribe from this job alert.",
+    "linkDomains": ["linkedin.com"], "hasCalendarInvite": false, "listUnsubscribe": true, "providerLabels": ["INBOX", "CATEGORY_UPDATES"]
+  },
+  {
+    "expected": "Junk",
+    "fromName": "GitHub", "fromAddr": "noreply@github.com",
+    "subject": "[GitHub] Please verify your device",
+    "text": "Hey samlee! A sign in attempt requires further verification. Verification code: 284019. If you did not attempt to sign in, change your password.",
+    "linkDomains": ["github.com"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Junk",
+    "fromName": "Medium Daily Digest", "fromAddr": "noreply@medium.com",
+    "subject": "10 Python tricks you didn't know",
+    "text": "Today's highlights. 10 Python tricks you didn't know. How I got my first job in tech. Unsubscribe.",
+    "linkDomains": ["medium.com"], "hasCalendarInvite": false, "listUnsubscribe": true, "providerLabels": ["INBOX", "CATEGORY_UPDATES"]
+  },
+  {
+    "expected": "Junk",
+    "fromName": "OpenAI", "fromAddr": "noreply@tm.openai.com",
+    "subject": "Your new API key",
+    "text": "You created a new secret API key named 'laptop'. If this wasn't you, revoke it in your dashboard.",
+    "linkDomains": ["platform.openai.com"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Junk",
+    "fromName": "Uniqlo", "fromAddr": "news@uniqlo.com",
+    "subject": "Fall sale: 30% off everything",
+    "text": "Shop the fall collection now. Free shipping over $50.",
+    "linkDomains": ["uniqlo.com"], "hasCalendarInvite": false, "listUnsubscribe": true, "providerLabels": ["INBOX", "CATEGORY_PROMOTIONS"]
+  },
+  {
+    "expected": "Junk",
+    "fromName": "Indeed", "fromAddr": "alert@indeed.com",
+    "subject": "Product Analyst jobs - Apply now",
+    "text": "Recommended jobs for you: Product Analyst - Remote. Junior Analyst - Toronto. Jobs you may be interested in.",
+    "linkDomains": ["indeed.com"], "hasCalendarInvite": false, "listUnsubscribe": true, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Junk",
+    "fromName": "Microsoft account team", "fromAddr": "account-security-noreply@accountprotection.microsoft.com",
+    "subject": "Microsoft account password reset",
+    "text": "Please use this code to reset the password for the Microsoft account sa***@outlook.com. Here is your code: 7731",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Junk",
+    "fromName": "Glassdoor Community", "fromAddr": "noreply@glassdoor.com",
+    "subject": "Your weekly digest: Tech salaries are rising",
+    "text": "Popular posts in Tech. Salaries for data analysts rose 8% this year. See what people are saying.",
+    "linkDomains": ["glassdoor.com"], "hasCalendarInvite": false, "listUnsubscribe": true, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Other",
+    "fromName": "Mom", "fromAddr": "linda.lee@gmail.com",
+    "subject": "Dinner on Sunday?",
+    "text": "Hi sweetie, are you coming over for dinner on Sunday? Dad is making lasagna.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Other",
+    "fromName": "Toronto Hydro", "fromAddr": "billing@torontohydro.com",
+    "subject": "Your bill is ready",
+    "text": "Your electricity bill for September is ready. Amount due: $84.20 on October 20.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Other",
+    "fromName": "Alex Kim", "fromAddr": "alex.kim@outlook.com",
+    "subject": "Photos from the hike",
+    "text": "Here are the photos from Saturday's hike! Let me know which ones you want printed.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Meeting",
+    "fromName": "Calendly", "fromAddr": "notifications@calendly.com",
+    "subject": "New Event: Sam Lee - 45 Minute Technical Interview",
+    "text": "Hi Sam, a new event has been scheduled. Event type: 45 Minute Technical Interview with Acme Engineering. Location: Zoom [link:zoom.us]",
+    "linkDomains": ["calendly.com", "zoom.us"], "hasCalendarInvite": true, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Applied",
+    "fromName": "Indeed Apply", "fromAddr": "indeedapply@indeed.com",
+    "subject": "Application submitted: Junior Data Analyst at Northwind",
+    "text": "Your application has been submitted to Northwind. The employer will contact you if your qualifications are a match. Good luck!",
+    "linkDomains": ["indeed.com"], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Rejected",
+    "fromName": "Workable", "fromAddr": "noreply@workablemail.com",
+    "subject": "Your application at Fabrikam",
+    "text": "Hi Sam, thanks for applying to Fabrikam. We received many applications and, unfortunately, we won't be moving forward with your application this time.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Questions",
+    "fromName": "Northwind Talent", "fromAddr": "talent@northwind.com",
+    "subject": "Screening questions",
+    "text": "Hi Sam, thank you for your application. Please answer the following questions by replying to this email: 1) Are you authorized to work in Canada? 2) What is your notice period?",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  },
+  {
+    "expected": "Needs Attention",
+    "fromName": "iCIMS", "fromAddr": "no-reply@icims.com",
+    "subject": "Reminder: complete the application form for Tailspin Toys",
+    "text": "Hello Sam, our records show you did not complete your application for Data Coordinator. Missing documents: cover letter. Log in to complete the application form.",
+    "linkDomains": [], "hasCalendarInvite": false, "listUnsubscribe": false, "providerLabels": ["INBOX"]
+  }
+]

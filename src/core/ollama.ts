@@ -1,0 +1,166 @@
+/** Minimal Ollama HTTP client (https://github.com/ollama/ollama/blob/main/docs/api.md) with AbortSignal support. */
+
+export interface OllamaToolCall {
+  function: { name: string; arguments: Record<string, unknown> }
+}
+
+export interface OllamaMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string
+  tool_calls?: OllamaToolCall[]
+  tool_name?: string
+}
+
+export interface OllamaTool {
+  type: 'function'
+  function: { name: string; description?: string; parameters: Record<string, unknown> }
+}
+
+export interface ChatRequest {
+  model: string
+  messages: OllamaMessage[]
+  tools?: OllamaTool[]
+  format?: 'json' | Record<string, unknown>
+  options?: Record<string, unknown>
+  keep_alive?: string | number
+  think?: boolean
+}
+
+export interface ChatChunk {
+  message: OllamaMessage
+  done: boolean
+  total_duration?: number
+  eval_count?: number
+}
+
+export type OllamaErrorKind = 'unreachable' | 'model_missing' | 'timeout' | 'aborted' | 'http'
+
+export class OllamaError extends Error {
+  constructor(
+    message: string,
+    readonly kind: OllamaErrorKind
+  ) {
+    super(message)
+    this.name = 'OllamaError'
+  }
+}
+
+export interface OllamaModel {
+  name: string
+  size: number
+  parameterSize?: string
+  quantization?: string
+}
+
+const DEFAULT_TIMEOUT_MS = 180_000
+
+export class OllamaClient {
+  constructor(readonly baseUrl: string) {}
+
+  private async request(path: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
+    const timeout = AbortSignal.timeout(init.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+    let res: Response
+    try {
+      res = await fetch(this.baseUrl + path, {
+        ...init,
+        signal,
+        headers: { 'content-type': 'application/json', ...init.headers }
+      })
+    } catch (err) {
+      if (init.signal?.aborted) throw new OllamaError('Request cancelled', 'aborted')
+      if (timeout.aborted) throw new OllamaError(`Ollama at ${this.baseUrl} did not answer in time`, 'timeout')
+      throw new OllamaError(
+        `Can't reach Ollama at ${this.baseUrl} (${(err as Error).cause ?? (err as Error).message}). ` +
+          'Check that Ollama is running, OLLAMA_HOST=0.0.0.0 is set on that PC, and port 11434 is open.',
+        'unreachable'
+      )
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      let msg = text
+      try {
+        msg = JSON.parse(text).error ?? text
+      } catch {
+        /* plain text error */
+      }
+      if (res.status === 404 && /model.*not found/i.test(msg)) {
+        const model = msg.match(/model "?([^"\s]+)"?/i)?.[1] ?? ''
+        throw new OllamaError(`Model ${model} is not on the Ollama host. Run: ollama pull ${model}`, 'model_missing')
+      }
+      throw new OllamaError(`Ollama error ${res.status}: ${msg || res.statusText}`, 'http')
+    }
+    return res
+  }
+
+  async version(signal?: AbortSignal): Promise<string> {
+    const res = await this.request('/api/version', { signal, timeoutMs: 5000 })
+    return ((await res.json()) as { version: string }).version
+  }
+
+  async models(signal?: AbortSignal): Promise<OllamaModel[]> {
+    const res = await this.request('/api/tags', { signal, timeoutMs: 5000 })
+    const body = (await res.json()) as {
+      models: { name: string; size: number; details?: { parameter_size?: string; quantization_level?: string } }[]
+    }
+    return body.models.map((m) => ({
+      name: m.name,
+      size: m.size,
+      parameterSize: m.details?.parameter_size,
+      quantization: m.details?.quantization_level
+    }))
+  }
+
+  async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatChunk> {
+    const res = await this.request('/api/chat', { method: 'POST', body: JSON.stringify({ ...req, stream: false }), signal })
+    return (await res.json()) as ChatChunk
+  }
+
+  /** Streams NDJSON chunks from /api/chat. */
+  async *chatStream(req: ChatRequest, signal?: AbortSignal): AsyncGenerator<ChatChunk> {
+    const res = await this.request('/api/chat', { method: 'POST', body: JSON.stringify({ ...req, stream: true }), signal })
+    if (!res.body) throw new OllamaError('Empty response from Ollama', 'http')
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for await (const part of res.body as unknown as AsyncIterable<Uint8Array>) {
+        buffer += decoder.decode(part, { stream: true })
+        let nl: number
+        while ((nl = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, nl).trim()
+          buffer = buffer.slice(nl + 1)
+          if (!line) continue
+          const chunk = JSON.parse(line) as ChatChunk & { error?: string }
+          if (chunk.error) throw new OllamaError(chunk.error, 'http')
+          yield chunk
+        }
+      }
+    } catch (err) {
+      if (signal?.aborted) throw new OllamaError('Request cancelled', 'aborted')
+      throw err
+    }
+    if (buffer.trim()) yield JSON.parse(buffer) as ChatChunk
+  }
+}
+
+export interface OllamaHealth {
+  ok: boolean
+  url: string
+  version?: string
+  models?: OllamaModel[]
+  missing?: string[]
+  error?: string
+}
+
+/** Checks the server and that the configured models are pulled. */
+export async function checkOllama(url: string, requiredModels: string[]): Promise<OllamaHealth> {
+  const client = new OllamaClient(url)
+  try {
+    const [version, models] = await Promise.all([client.version(), client.models()])
+    const names = new Set(models.flatMap((m) => [m.name, m.name.replace(/:latest$/, '')]))
+    const missing = [...new Set(requiredModels.filter(Boolean))].filter((m) => !names.has(m) && !names.has(`${m}:latest`))
+    return { ok: missing.length === 0, url, version, models, missing }
+  } catch (err) {
+    return { ok: false, url, error: (err as Error).message }
+  }
+}

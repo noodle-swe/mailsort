@@ -134,6 +134,14 @@ export class OutlookProvider implements MailProvider {
     return { content: m.body?.content ?? '', isHtml: m.body?.contentType === 'html' }
   }
 
+  async setRead(providerId: string, read: boolean): Promise<void> {
+    await this.http.json(`${GRAPH}/me/messages/${encodeURIComponent(providerId)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ isRead: read })
+    })
+  }
+
   async applyTags(changes: TagChange[]): Promise<ApplyResult> {
     const result: ApplyResult = { ok: [], failed: [] }
     // JSON batching: up to 20 requests per call.

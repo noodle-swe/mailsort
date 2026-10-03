@@ -225,6 +225,18 @@ export class Core {
     return body
   }
 
+  /** Marks a message read here at once, then in Gmail/Outlook in the background (it never blocks the UI). */
+  async markRead(messageId: string): Promise<void> {
+    const msg = this.store.getMessage(messageId)
+    if (!msg || msg.isRead) return
+    this.store.markRead(messageId)
+    try {
+      await this.providerFor(msg.accountId).setRead(msg.providerId, true)
+    } catch (err) {
+      this.events.emit({ type: 'read-sync-failed', accountId: msg.accountId, error: (err as Error).message })
+    }
+  }
+
   // ---------------------------------------------------------------- tagging
 
   runTagging(opts: TaggingOptions = {}): Promise<TaggingResult> {

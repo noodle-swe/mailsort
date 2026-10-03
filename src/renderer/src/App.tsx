@@ -165,6 +165,9 @@ export default function App() {
       case 'writeback':
         if (e.failed) setNotice({ text: `${e.failed} tag(s) could not be saved to your mailbox${e.error ? `: ${e.error}` : '.'}`, error: true })
         break
+      case 'read-sync-failed':
+        setNotice({ text: `Couldn't mark the email as read in your mailbox: ${e.error}`, error: true })
+        break
     }
   })
 

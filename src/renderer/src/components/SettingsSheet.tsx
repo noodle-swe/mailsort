@@ -143,8 +143,12 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
               <Field label="Tagging model" htmlFor="tag-model" hint="Leave empty to use the chat model, so the GPU never swaps models.">
                 <input id="tag-model" className={inputCls} list="models" placeholder="Same as chat model" value={form.classifierModel} onChange={(e) => set('classifierModel', e.target.value)} />
               </Field>
-              <Field label="Parallel requests" htmlFor="parallel" hint="Match OLLAMA_NUM_PARALLEL on the Ollama PC.">
-                <input id="parallel" className={`${inputCls} w-24`} type="number" min={1} max={16} value={form.llmConcurrency} onChange={(e) => set('llmConcurrency', Number(e.target.value))} />
+              <Field
+                label="Parallel requests"
+                htmlFor="parallel"
+                hint="0 is Auto: MailSort measures the speed and picks. A fixed number should match OLLAMA_NUM_PARALLEL on the Ollama PC."
+              >
+                <input id="parallel" className={`${inputCls} w-24`} type="number" min={0} max={16} value={form.llmConcurrency} onChange={(e) => set('llmConcurrency', Number(e.target.value))} />
               </Field>
             </Section>
 

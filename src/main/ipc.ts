@@ -56,7 +56,9 @@ export function registerIpc({ core, agent, httpMcp, window, status }: Deps): voi
   handle('messages:list', (q) => core.store.listMessages(sanitizeQuery(q)))
   handle('messages:get', (id) => core.store.getMessage(String(id)))
   handle('messages:body', (id) => core.getBody(String(id)))
-  handle('messages:markRead', (id) => core.store.markRead(String(id)))
+  handle('messages:markRead', (id) => {
+    void core.markRead(String(id))
+  })
   handle('messages:unread', () => core.store.unreadCounts())
 
   handle('tags:set', (ids, tag) => {

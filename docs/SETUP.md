@@ -62,7 +62,7 @@ On the PC with the graphics card:
    | Variable | Value | Why |
    |---|---|---|
    | `OLLAMA_HOST` | `0.0.0.0:11434` | Accept connections from other PCs on the LAN |
-   | `OLLAMA_NUM_PARALLEL` | `4` | Classify 4 emails at once (match "Parallel requests" in MailSort) |
+   | `OLLAMA_NUM_PARALLEL` | `4` | How many emails Ollama classifies at once. MailSort's "Parallel requests" is Auto by default and finds the best level up to this value. Higher values need more GPU memory; on a small GPU keep it at `1` or `2` |
    | `OLLAMA_KEEP_ALIVE` | `30m` | Keep the model loaded between batches |
 
 4. Allow the port through the firewall, **for your local network only** (PowerShell as admin):

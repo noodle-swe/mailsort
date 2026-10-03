@@ -7,6 +7,7 @@ export type CoreEvent =
   | { type: 'tagging-progress'; progress: TaggingProgress }
   | { type: 'accounts-changed' }
   | { type: 'writeback'; ok: number; failed: number; error?: string }
+  | { type: 'read-sync-failed'; accountId: string; error: string }
 
 export type CoreListener = (event: CoreEvent) => void
 

@@ -2,6 +2,7 @@ import { OllamaError } from '../ollama'
 import type { ClassifyCandidate, Store } from '../store'
 import type { Tag } from '../tags'
 import type { TaggingProgress, TaggingResult, TagSource } from '../types'
+import { ConcurrencyTuner, DEFAULT_CEILING } from './autotune'
 import type { LlmClassifier } from './llm'
 import { applyRules, domainRuleAllowed, RULE_ACCEPT, type ClassifyInput, type Verdict } from './rules'
 
@@ -32,18 +33,38 @@ export function toClassifyInput(c: ClassifyCandidate): ClassifyInput {
   }
 }
 
-/** Runs fn over items with at most `concurrency` in flight. */
-async function pool<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
-  let next = 0
-  const worker = async () => {
-    while (next < items.length) await fn(items[next++])
-  }
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker))
+/** Runs fn over items with at most `limit()` in flight; the limit is re-read as work finishes, so it can change mid-run. */
+export function pool<T>(items: T[], limit: () => number, fn: (item: T) => Promise<void>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let next = 0
+    let running = 0
+    let failed = false
+    const pump = () => {
+      if (failed) return
+      while (running < Math.max(1, limit()) && next < items.length) {
+        running++
+        fn(items[next++]).then(
+          () => {
+            running--
+            pump()
+          },
+          (err) => {
+            failed = true
+            reject(err)
+          }
+        )
+      }
+      if (running === 0 && next >= items.length) resolve()
+    }
+    pump()
+  })
 }
 
 export class Tagger {
   private queue: Promise<unknown> = Promise.resolve()
   private active = 0
+  /** Parallelism the Auto mode settled on, so the next run starts there instead of at 1. */
+  private tunedLevel = 1
 
   constructor(
     private readonly store: Store,
@@ -129,10 +150,12 @@ export class Tagger {
     // Stage 2: the model, for what rules could not settle.
     if (needsModel.length && !opts.signal?.aborted) {
       const classifier = this.getClassifier()
-      const concurrency = this.store.getSettings().llmConcurrency
+      const configured = this.store.getSettings().llmConcurrency
+      // 0 = Auto: the first email runs alone (it loads the model), then the tuner takes over.
+      let tuner: ConcurrencyTuner | null = null
       let fatal: Error | null = null
       let lastFlush = Date.now()
-      await pool(needsModel, concurrency, async (c) => {
+      const classifyOne = async (c: ClassifyCandidate) => {
         if (fatal || opts.signal?.aborted) return
         try {
           const examples = this.store.similarCorrections(c.fromAddr, 3)
@@ -148,11 +171,23 @@ export class Tagger {
           progress('llm')
         }
         done++
+        tuner?.completed()
         if (Date.now() - lastFlush > 500) {
           flushTagged()
           lastFlush = Date.now()
         }
-      })
+      }
+
+      if (configured > 0) {
+        await pool(needsModel, () => configured, classifyOne)
+      } else {
+        await classifyOne(needsModel[0])
+        const ceiling = await classifier.concurrencyCeiling?.(opts.signal).catch(() => DEFAULT_CEILING)
+        tuner = new ConcurrencyTuner(ceiling ?? DEFAULT_CEILING, this.tunedLevel)
+        const active = tuner
+        await pool(needsModel.slice(1), () => active.limit, classifyOne)
+        this.tunedLevel = active.chosen
+      }
       flushTagged()
       if (fatal) {
         result.error = (fatal as Error).message

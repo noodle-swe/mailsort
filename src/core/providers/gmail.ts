@@ -263,6 +263,14 @@ export class GmailProvider implements MailProvider {
     return label.id
   }
 
+  async setRead(providerId: string, read: boolean): Promise<void> {
+    await this.http.json(`${API}/messages/${providerId}/modify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(read ? { removeLabelIds: ['UNREAD'] } : { addLabelIds: ['UNREAD'] })
+    })
+  }
+
   async applyTags(changes: TagChange[]): Promise<ApplyResult> {
     const result: ApplyResult = { ok: [], failed: [] }
     let labels: Map<string, string>

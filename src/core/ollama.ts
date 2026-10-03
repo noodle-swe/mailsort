@@ -52,6 +52,13 @@ export interface OllamaModel {
   quantization?: string
 }
 
+export interface OllamaRunningModel {
+  name: string
+  model: string
+  size: number
+  sizeVram: number
+}
+
 const DEFAULT_TIMEOUT_MS = 180_000
 
 export class OllamaClient {
@@ -109,6 +116,13 @@ export class OllamaClient {
       parameterSize: m.details?.parameter_size,
       quantization: m.details?.quantization_level
     }))
+  }
+
+  /** Models currently loaded, with how much of each sits in GPU memory (size_vram < size means part runs on the CPU). */
+  async running(signal?: AbortSignal): Promise<OllamaRunningModel[]> {
+    const res = await this.request('/api/ps', { signal, timeoutMs: 5000 })
+    const body = (await res.json()) as { models?: { name: string; model?: string; size: number; size_vram?: number }[] }
+    return (body.models ?? []).map((m) => ({ name: m.name, model: m.model ?? m.name, size: m.size, sizeVram: m.size_vram ?? 0 }))
   }
 
   async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatChunk> {

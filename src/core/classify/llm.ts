@@ -1,4 +1,5 @@
 import { OllamaClient, type OllamaMessage } from '../ollama'
+import { concurrencyCeiling } from './autotune'
 import { TAGS, TAG_PRECEDENCE, normalizeTag, tagDefinitionsText } from '../tags'
 import { formatForModel } from '../text'
 import type { Correction } from '../store'
@@ -10,6 +11,8 @@ export const MIN_LLM_CONFIDENCE = 0.5
 export interface LlmClassifier {
   readonly model: string
   classify(email: ClassifyInput, examples: Correction[], signal?: AbortSignal): Promise<Verdict>
+  /** How many requests the host can usefully run at once, once the model is loaded. Omitted = use the default. */
+  concurrencyCeiling?(signal?: AbortSignal): Promise<number>
 }
 
 // "reason" comes first so small models think briefly before choosing the tag.
@@ -123,12 +126,18 @@ export function createOllamaClassifier(opts: { url: string; model: string }): Ll
             }
           ],
           format: RESPONSE_SCHEMA,
+          // Reasoning models (qwen3 and similar) would spend the whole num_predict budget thinking and return no answer.
+          think: false,
           options: { temperature: 0, num_ctx: 3072, num_predict: 80 },
           keep_alive: '30m'
         },
         signal
       )
       return parseVerdict(res.message.content)
+    },
+    async concurrencyCeiling(signal) {
+      const loaded = (await client.running(signal)).find((m) => m.name === opts.model || m.model === opts.model)
+      return concurrencyCeiling(loaded)
     }
   }
 }

@@ -5,7 +5,7 @@ import { HttpError, type Http } from '../src/core/providers/http'
 import type { SyncHandlers } from '../src/core/providers/types'
 import type { Core } from '../src/core/core'
 import type { IncomingMessage } from '../src/core/types'
-import { makeCore, plainSecrets } from './helpers'
+import { makeCore, plainSecrets, seededCore } from './helpers'
 
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64url')
 
@@ -164,6 +164,18 @@ describe('GmailProvider', () => {
     await p.applyTags([{ providerId: 'g2', tag: 'Junk', providerLabels: [] }])
     expect(http.calls.slice(before).every((c) => c.url.includes('batchModify'))).toBe(true)
   })
+
+  it('marks read by removing UNREAD, and unread by adding it', async () => {
+    core = makeCore()
+    const http = fakeHttp([['/messages/g1/modify', () => ({})]])
+    const p = new GmailProvider('acc', 'sam@example.com', http, core.store)
+    await p.setRead('g1', true)
+    await p.setRead('g1', false)
+    expect(http.calls.map((c) => [c.init?.method, JSON.parse(c.init!.body as string)])).toEqual([
+      ['POST', { removeLabelIds: ['UNREAD'] }],
+      ['POST', { addLabelIds: ['UNREAD'] }]
+    ])
+  })
 })
 
 describe('Outlook', () => {
@@ -225,5 +237,46 @@ describe('Outlook', () => {
     expect(sent[0].body.categories).toEqual(['Blue', 'AI/Rejected'])
     expect(res.ok).toEqual([{ providerId: 'o1', providerLabels: ['Blue', 'AI/Rejected'] }])
     expect(res.failed[0]).toMatchObject({ providerId: 'o2' })
+  })
+
+  it('marks read with a PATCH on the message', async () => {
+    const http = fakeHttp([['/me/messages/o%2F1', () => ({})]])
+    await new OutlookProvider(http).setRead('o/1', true)
+    expect(http.calls[0].url).toContain('/me/messages/o%2F1')
+    expect(http.calls[0].init).toMatchObject({ method: 'PATCH', body: JSON.stringify({ isRead: true }) })
+  })
+})
+
+describe('Core.markRead', () => {
+  let core: Core
+  afterEach(() => core.close())
+
+  it('marks read locally at once and tells the mailbox', async () => {
+    let accountId: string
+    ;({ core, accountId } = seededCore())
+    const calls: [string, boolean][] = []
+    ;(core as unknown as { providers: Map<string, unknown> }).providers.set(accountId, { setRead: async (id: string, read: boolean) => void calls.push([id, read]) })
+    const id = `${accountId}:m1`
+    expect(core.store.getMessage(id)!.isRead).toBe(false)
+    const pending = core.markRead(id)
+    expect(core.store.getMessage(id)!.isRead).toBe(true) // before the mailbox answered
+    await pending
+    await core.markRead(id) // already read: no second request
+    expect(calls).toEqual([['m1', true]])
+  })
+
+  it('keeps it read locally and reports when the mailbox refuses', async () => {
+    let accountId: string
+    ;({ core, accountId } = seededCore())
+    ;(core as unknown as { providers: Map<string, unknown> }).providers.set(accountId, {
+      setRead: async () => {
+        throw new Error('HTTP 403')
+      }
+    })
+    const events: unknown[] = []
+    core.on((e) => events.push(e))
+    await core.markRead(`${accountId}:m1`)
+    expect(core.store.getMessage(`${accountId}:m1`)!.isRead).toBe(true)
+    expect(events).toContainEqual({ type: 'read-sync-failed', accountId, error: 'HTTP 403' })
   })
 })

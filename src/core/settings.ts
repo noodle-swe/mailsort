@@ -12,7 +12,7 @@ export interface Settings {
   /** How far back the first sync of an account goes. */
   syncDays: number
   syncIntervalSec: number
-  /** Parallel Ollama requests; match OLLAMA_NUM_PARALLEL on the Ollama host. */
+  /** Parallel Ollama requests. 0 = Auto: measure the speed and pick (see classify/autotune.ts). */
   llmConcurrency: number
   /** Cap for cached full HTML bodies. */
   bodyCacheMB: number
@@ -31,7 +31,7 @@ export const DEFAULT_SETTINGS: Settings = {
   writeBack: true,
   syncDays: 90,
   syncIntervalSec: 60,
-  llmConcurrency: 4,
+  llmConcurrency: 0,
   bodyCacheMB: 200,
   retentionDays: 365,
   mcpHttpEnabled: false,
@@ -68,7 +68,7 @@ export function sanitizeSettings(patch: Record<string, unknown>): Partial<Settin
         out.syncIntervalSec = num(value, 15, 3600)
         break
       case 'llmConcurrency':
-        out.llmConcurrency = num(value, 1, 16)
+        out.llmConcurrency = num(value, 0, 16)
         break
       case 'bodyCacheMB':
         out.bodyCacheMB = num(value, 10, 10_000)

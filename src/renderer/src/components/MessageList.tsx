@@ -18,6 +18,8 @@ interface Props {
   search: string
   selectedId: string | null
   onSelect: (id: string) => void
+  /** Sizing from the layout; the default is the fixed-width column. */
+  className?: string
 }
 
 function viewTitle(view: View, accounts: Account[]): string {
@@ -54,7 +56,7 @@ function SkeletonRows() {
   )
 }
 
-export default function MessageList({ view, onView, accounts, search, selectedId, onSelect }: Props) {
+export default function MessageList({ view, onView, accounts, search, selectedId, onSelect, className = 'w-[372px] shrink-0' }: Props) {
   const query = useInfiniteQuery({
     queryKey: ['messages', view, search],
     queryFn: ({ pageParam }) => api.listMessages({ ...view, query: search || undefined, cursor: pageParam, limit: 50 }),
@@ -97,7 +99,7 @@ export default function MessageList({ view, onView, accounts, search, selectedId
   const showAccount = !view.accountId && accounts.length > 1
 
   return (
-    <section aria-label="Emails" className="glass fade flex w-[372px] shrink-0 flex-col overflow-hidden" style={{ ['--d' as string]: '60ms' }}>
+    <section aria-label="Emails" className={`glass fade flex min-h-0 min-w-0 flex-col overflow-hidden ${className}`} style={{ ['--d' as string]: '60ms' }}>
       <header className="flex items-end justify-between gap-3 px-4 pt-4 pb-3">
         <div className="min-w-0">
           <h1 className="truncate text-[17px] font-semibold tracking-tight">{search ? `Results for "${search}"` : viewTitle(view, accounts)}</h1>

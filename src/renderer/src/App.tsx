@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChatCircleTextIcon, GearSixIcon, MagnifyingGlassIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
+import { ChatCircleTextIcon, ColumnsIcon, GearSixIcon, ListIcon, MagnifyingGlassIcon, RowsIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import type { Tag } from '../../core/tags'
 import type { Provider, TaggingProgress } from '../../core/types'
 import { api, useAppEvents } from './lib/api'
@@ -32,7 +32,54 @@ function IconButton({ label, active, onClick, children }: { label: string; activ
   )
 }
 
-function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings }: { onSearch: (s: string) => void; chatOpen: boolean; onToggleChat: () => void; onOpenSettings: () => void }) {
+export type Layout = 'columns' | 'split' | 'list'
+
+const LAYOUTS: { id: Layout; label: string; icon: React.ReactNode }[] = [
+  { id: 'columns', label: 'Columns: list beside the email', icon: <ColumnsIcon /> },
+  { id: 'split', label: 'Split: list above the email', icon: <RowsIcon /> },
+  { id: 'list', label: 'List: one pane at a time', icon: <ListIcon /> }
+]
+
+function loadLayout(): Layout {
+  try {
+    const saved = localStorage.getItem('layout')
+    if (saved === 'columns' || saved === 'split' || saved === 'list') return saved
+  } catch {
+    // storage unavailable: fall back to the default
+  }
+  return 'columns'
+}
+
+function LayoutSwitch({ layout, onChange }: { layout: Layout; onChange: (l: Layout) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Layout" className="glass-side no-drag flex h-8 items-center gap-0.5 rounded-[10px] p-0.5">
+      {LAYOUTS.map((l) => (
+        <button
+          key={l.id}
+          role="radio"
+          aria-checked={layout === l.id}
+          title={l.label}
+          aria-label={l.label}
+          onClick={() => onChange(l.id)}
+          className={`press grid h-7 w-7 place-items-center rounded-[8px] ${layout === l.id ? 'bg-primary text-on-primary' : 'text-ink-soft hover:text-ink'}`}
+        >
+          {l.icon}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+interface TopBarProps {
+  onSearch: (s: string) => void
+  chatOpen: boolean
+  onToggleChat: () => void
+  onOpenSettings: () => void
+  layout: Layout
+  onLayout: (l: Layout) => void
+}
+
+function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLayout }: TopBarProps) {
   const [draft, setDraft] = useState('')
   // Debounce typing so each keystroke doesn't hit SQLite.
   useEffect(() => {
@@ -62,6 +109,7 @@ function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings }: { onSearch
         )}
       </label>
       <div className="ml-auto flex gap-1.5">
+        <LayoutSwitch layout={layout} onChange={onLayout} />
         <IconButton label={chatOpen ? 'Hide assistant' : 'Show assistant'} active={chatOpen} onClick={onToggleChat}>
           <ChatCircleTextIcon weight={chatOpen ? 'fill' : 'regular'} />
         </IconButton>
@@ -79,6 +127,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [chatOpen, setChatOpen] = useState(true)
+  const [layout, setLayout] = useState<Layout>(loadLayout)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [syncing, setSyncing] = useState<Record<string, boolean>>({})
   const [progress, setProgress] = useState<TaggingProgress | null>(null)
@@ -134,11 +183,31 @@ export default function App() {
     setSelectedId(null)
   }
 
+  const changeLayout = (l: Layout) => {
+    setLayout(l)
+    try {
+      localStorage.setItem('layout', l)
+    } catch {
+      // not persisted; the choice still applies for this session
+    }
+  }
+
   const hasAccounts = (accounts.data?.length ?? 0) > 0
+
+  const list = (className?: string) => (
+    <MessageList view={view} onView={changeView} accounts={accounts.data ?? []} search={search} selectedId={selectedId} onSelect={setSelectedId} className={className} />
+  )
 
   return (
     <div className="relative flex h-full flex-col">
-      <TopBar onSearch={setSearch} chatOpen={chatOpen} onToggleChat={() => setChatOpen((o) => !o)} onOpenSettings={() => setSettingsOpen(true)} />
+      <TopBar
+        onSearch={setSearch}
+        chatOpen={chatOpen}
+        onToggleChat={() => setChatOpen((o) => !o)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        layout={layout}
+        onLayout={changeLayout}
+      />
 
       <div className="flex min-h-0 flex-1 gap-2.5 px-2.5 pb-2.5">
         <Sidebar
@@ -152,10 +221,21 @@ export default function App() {
         />
 
         {hasAccounts || accounts.isLoading ? (
-          <>
-            <MessageList view={view} onView={changeView} accounts={accounts.data ?? []} search={search} selectedId={selectedId} onSelect={setSelectedId} />
-            <ReadingPane id={selectedId} onView={changeView} progress={progress} />
-          </>
+          layout === 'columns' ? (
+            <>
+              {list()}
+              <ReadingPane id={selectedId} onView={changeView} progress={progress} />
+            </>
+          ) : layout === 'split' ? (
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5">
+              {list('h-[40%] min-h-[200px] w-full shrink-0')}
+              <ReadingPane id={selectedId} onView={changeView} progress={progress} />
+            </div>
+          ) : selectedId ? (
+            <ReadingPane id={selectedId} onView={changeView} progress={progress} onBack={() => setSelectedId(null)} />
+          ) : (
+            list('flex-1')
+          )
         ) : (
           <Welcome configured={status.data?.configured} onAdd={addAccount} />
         )}

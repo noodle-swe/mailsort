@@ -4,6 +4,7 @@ import { ArrowsClockwiseIcon, CheckIcon, PaperPlaneRightIcon, StopIcon, WarningC
 import type { ChatTurn } from '../../../preload/api'
 import { api, useAppEvents } from '../lib/api'
 import { cleanError } from '../lib/format'
+import AssistantMessage from './AssistantMessage'
 
 interface ToolActivity {
   name: string
@@ -117,7 +118,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
         </button>
       </header>
 
-      <div ref={scrollRef} className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+      <div ref={scrollRef} className="flex flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-4 pb-4">
         {items.length === 0 && (
           <p className="enter max-w-[34ch] text-[13px] leading-relaxed text-muted">
             Ask about your mail. The model on your Ollama PC can search, read and tag emails through MailSort's MCP tools.
@@ -129,7 +130,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
               {it.content}
             </div>
           ) : (
-            <div key={i} className="enter flex flex-col gap-2">
+            <div key={i} className="enter flex min-w-0 flex-col gap-2">
               {it.tools?.map((t, j) => (
                 <div key={j} className="flex items-center gap-2 text-xs text-muted">
                   {t.status === 'running' ? (
@@ -146,7 +147,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
                 </div>
               ))}
               {it.content ? (
-                <div className="selectable text-[13px] leading-relaxed whitespace-pre-wrap">{it.content}</div>
+                <AssistantMessage content={it.content} />
               ) : (
                 it.pending &&
                 !it.tools?.length && (

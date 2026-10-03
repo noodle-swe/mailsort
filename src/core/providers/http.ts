@@ -45,14 +45,18 @@ export function createHttp(tokens: TokenManager): Http {
         await tokens.refresh()
         continue
       }
-      if ((res.status === 429 || res.status >= 500) && attempt < 4) {
+      const text = res.status === 403 ? await res.text().catch(() => '') : undefined
+      // Google reports per-minute quota exhaustion as 403 rather than 429; those need a longer wait.
+      const quota403 = text !== undefined && /quota exceeded|rateLimitExceeded|userRateLimitExceeded/i.test(text)
+      if ((res.status === 429 || res.status >= 500 || quota403) && attempt < 4) {
         const retryAfter = Number(res.headers.get('retry-after'))
-        const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 500 * 2 ** attempt + Math.random() * 250
-        await res.body?.cancel()
+        const base = quota403 ? 10_000 * 2 ** attempt : 500 * 2 ** attempt
+        const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : base + Math.random() * 250
+        if (text === undefined) await res.body?.cancel()
         await sleep(Math.min(wait, 30_000), signal)
         continue
       }
-      throw new HttpError(res.status, await res.text().catch(() => ''), url)
+      throw new HttpError(res.status, text ?? (await res.text().catch(() => '')), url)
     }
   }
   return {

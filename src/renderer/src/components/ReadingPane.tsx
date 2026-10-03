@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUpRightIcon, CaretDownIcon, ImageIcon, SparkleIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ArrowUpRightIcon, CaretDownIcon, ImageIcon, SparkleIcon } from '@phosphor-icons/react'
 import { ACTION_TAGS, TAGS, TAG_INFO, type Tag } from '../../../core/tags'
 import type { TaggingProgress } from '../../../core/types'
 import { api } from '../lib/api'
@@ -88,7 +88,7 @@ function BodySkeleton() {
   )
 }
 
-export default function ReadingPane({ id, onView, progress }: { id: string | null; onView: (v: View) => void; progress: TaggingProgress | null }) {
+export default function ReadingPane({ id, onView, progress, onBack }: { id: string | null; onView: (v: View) => void; progress: TaggingProgress | null; onBack?: () => void }) {
   const qc = useQueryClient()
   const [allowImages, setAllowImages] = useState(false)
   useEffect(() => setAllowImages(false), [id])
@@ -121,7 +121,7 @@ export default function ReadingPane({ id, onView, progress }: { id: string | nul
   const provider = m?.accountId.startsWith('gmail') ? 'Gmail' : 'Outlook'
 
   return (
-    <main className="glass fade flex min-w-0 flex-1 flex-col overflow-hidden p-2.5" style={{ ['--d' as string]: '120ms' }}>
+    <main className="glass fade flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2.5" style={{ ['--d' as string]: '120ms' }}>
       {!id ? (
         <Overview onView={onView} progress={progress} />
       ) : !m ? (
@@ -129,8 +129,16 @@ export default function ReadingPane({ id, onView, progress }: { id: string | nul
       ) : (
         <div key={m.id} className="enter flex min-h-0 flex-1 flex-col">
           <header className="flex flex-col gap-3 px-3.5 pt-3 pb-4">
-            <div className="flex items-start gap-3">
-              <h2 className="selectable min-w-0 flex-1 text-[19px] leading-snug font-semibold tracking-tight [text-wrap:balance]">{m.subject || '(no subject)'}</h2>
+            {/* Actions sit above the title so a long subject always gets the full pane width. */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {onBack ? (
+                <button onClick={onBack} className="press flex h-8 items-center gap-1.5 rounded-[10px] bg-field px-3 text-[13px] font-medium hover:bg-selected">
+                  <ArrowLeftIcon size={13} />
+                  Back to list
+                </button>
+              ) : (
+                <span />
+              )}
               <div className="flex shrink-0 items-center gap-1.5">
                 <label className="relative">
                   <span className="sr-only">Tag</span>
@@ -167,6 +175,9 @@ export default function ReadingPane({ id, onView, progress }: { id: string | nul
                 )}
               </div>
             </div>
+            <h2 className="selectable line-clamp-4 text-[19px] leading-snug font-semibold tracking-tight [overflow-wrap:anywhere] [text-wrap:balance]" title={m.subject ?? undefined}>
+              {m.subject || '(no subject)'}
+            </h2>
             <div className="flex items-center gap-3">
               <Avatar name={m.fromName} addr={m.fromAddr} size={36} />
               <div className="selectable min-w-0 flex-1">

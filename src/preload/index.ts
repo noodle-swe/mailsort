@@ -12,6 +12,8 @@ const api: MailApi = {
   getMessage: invoke('messages:get') as MailApi['getMessage'],
   getBody: invoke('messages:body') as MailApi['getBody'],
   markRead: invoke('messages:markRead') as MailApi['markRead'],
+  setRead: invoke('messages:setRead') as MailApi['setRead'],
+  digest: invoke('digest:get') as MailApi['digest'],
   setTag: invoke('tags:set') as MailApi['setTag'],
   tagCounts: invoke('tags:counts') as MailApi['tagCounts'],
   unreadCounts: invoke('messages:unread') as MailApi['unreadCounts'],

@@ -1,23 +1,44 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { GoogleLogoIcon, MicrosoftOutlookLogoIcon, PaperclipIcon, TrayIcon } from '@phosphor-icons/react'
-import type { Account } from '../../../core/types'
+import {
+  CaretDownIcon,
+  CheckIcon,
+  EnvelopeSimpleIcon,
+  EnvelopeSimpleOpenIcon,
+  GoogleLogoIcon,
+  MicrosoftOutlookLogoIcon,
+  PaperclipIcon,
+  TrayIcon
+} from '@phosphor-icons/react'
+import { TAGS, type Tag } from '../../../core/tags'
+import type { Account, MessageSummary } from '../../../core/types'
 import { api } from '../lib/api'
+import { activeCount, describeFilters, filtersToQuery, type Filters } from '../lib/filters'
 import { shortDate } from '../lib/format'
 import type { View } from '../App'
 import Avatar from './Avatar'
+import BulkBar from './BulkBar'
+import FilterBar from './FilterBar'
 import TagChip from './TagChip'
 
 const ROW_HEIGHT = 84
 
 interface Props {
   view: View
-  onView: (v: View) => void
+  filters: Filters
+  onFilters: (f: Filters) => void
   accounts: Account[]
   search: string
   selectedId: string | null
   onSelect: (id: string) => void
+  /** Emails ticked for a bulk action. */
+  checked: Set<string>
+  onChecked: (next: Set<string>) => void
+  /** Ids in list order, for keyboard navigation and "select all". */
+  onRows: (ids: string[]) => void
+  onSetRead: (ids: string[], read: boolean) => void
+  onSetTag: (ids: string[], tag: Tag) => void
   /** Sizing from the layout; the default is the fixed-width column. */
   className?: string
 }
@@ -56,15 +77,70 @@ function SkeletonRows() {
   )
 }
 
-export default function MessageList({ view, onView, accounts, search, selectedId, onSelect, className = 'w-[372px] shrink-0' }: Props) {
+/** Quick actions on the row under the pointer: read state and tag. Sibling of the row button, so no nested buttons. */
+function RowActions({ m, onSetRead, onSetTag }: { m: MessageSummary; onSetRead: Props['onSetRead']; onSetTag: Props['onSetTag'] }) {
+  return (
+    <div
+      className="absolute top-1.5 right-2 hidden items-center gap-0.5 rounded-[9px] p-0.5 shadow-sm group-focus-within:flex group-hover:flex"
+      style={{ background: 'var(--glass-solid)' }}
+    >
+      <button
+        onClick={() => onSetRead([m.id], !m.isRead)}
+        title={m.isRead ? 'Mark as unread (u)' : 'Mark as read (u)'}
+        aria-label={m.isRead ? 'Mark as unread' : 'Mark as read'}
+        className="press grid h-6 w-6 place-items-center rounded-[7px] text-ink-soft hover:bg-hover hover:text-ink"
+      >
+        {m.isRead ? <EnvelopeSimpleIcon size={14} /> : <EnvelopeSimpleOpenIcon size={14} />}
+      </button>
+      <label className="relative">
+        <span className="sr-only">Set tag</span>
+        <select
+          value=""
+          onChange={(e) => e.target.value && onSetTag([m.id], e.target.value as Tag)}
+          title="Set tag (1 to 7)"
+          className="press h-6 cursor-pointer appearance-none rounded-[7px] pr-5 pl-2 text-[11px] font-medium text-ink-soft hover:bg-hover hover:text-ink"
+        >
+          <option value="" disabled>
+            Tag
+          </option>
+          {TAGS.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        <CaretDownIcon size={10} className="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-muted" />
+      </label>
+    </div>
+  )
+}
+
+export default function MessageList({
+  view,
+  filters,
+  onFilters,
+  accounts,
+  search,
+  selectedId,
+  onSelect,
+  checked,
+  onChecked,
+  onRows,
+  onSetRead,
+  onSetTag,
+  className = 'w-[372px] shrink-0'
+}: Props) {
   const query = useInfiniteQuery({
-    queryKey: ['messages', view, search],
-    queryFn: ({ pageParam }) => api.listMessages({ ...view, query: search || undefined, cursor: pageParam, limit: 50 }),
+    queryKey: ['messages', view, filters, search],
+    queryFn: ({ pageParam }) =>
+      api.listMessages({ accountId: view.accountId, tag: view.tag, ...filtersToQuery(filters), query: search || undefined, cursor: pageParam, limit: 50 }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     placeholderData: (prev) => prev
   })
   const rows = useMemo(() => query.data?.pages.flatMap((p) => p.items) ?? [], [query.data])
+
+  useEffect(() => onRows(rows.map((r) => r.id)), [rows, onRows])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
@@ -75,6 +151,17 @@ export default function MessageList({ view, onView, accounts, search, selectedId
   })
   const items = virtualizer.getVirtualItems()
 
+  // Keyboard moves (j/k, arrows) change selectedId from outside; keep the row in view.
+  // Only when the selection changes, so a background refresh never yanks the list back.
+  const scrolledTo = useRef<string | null>(null)
+  useEffect(() => {
+    if (!selectedId || scrolledTo.current === selectedId) return
+    const idx = rows.findIndex((r) => r.id === selectedId)
+    if (idx < 0) return
+    scrolledTo.current = selectedId
+    virtualizer.scrollToIndex(idx, { align: 'auto' })
+  }, [selectedId, rows, virtualizer])
+
   // Infinite scroll: load the next page when the loader row comes into view.
   const lastIndex = items.at(-1)?.index ?? 0
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
@@ -82,83 +169,127 @@ export default function MessageList({ view, onView, accounts, search, selectedId
     if (lastIndex >= rows.length - 1 && hasNextPage && !isFetchingNextPage) void fetchNextPage()
   }, [lastIndex, rows.length, hasNextPage, isFetchingNextPage, fetchNextPage])
 
+  // j and k are global shortcuts (see useShortcuts); the arrow keys work while the list has focus.
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!['ArrowDown', 'ArrowUp', 'j', 'k'].includes(e.key)) return
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     e.preventDefault()
     const idx = rows.findIndex((r) => r.id === selectedId)
-    const next = e.key === 'ArrowDown' || e.key === 'j' ? Math.min(rows.length - 1, idx + 1) : Math.max(0, idx - 1)
-    if (rows[next]) {
-      onSelect(rows[next].id)
-      virtualizer.scrollToIndex(next, { align: 'auto' })
-    }
+    const next = e.key === 'ArrowDown' ? Math.min(rows.length - 1, idx + 1) : Math.max(0, idx - 1)
+    if (rows[next]) onSelect(rows[next].id)
+  }
+
+  const anchor = useRef<string | null>(null)
+  const toggleChecked = (id: string, range: boolean) => {
+    const next = new Set(checked)
+    const from = rows.findIndex((r) => r.id === anchor.current)
+    const to = rows.findIndex((r) => r.id === id)
+    if (range && from >= 0 && to >= 0) for (let i = Math.min(from, to); i <= Math.max(from, to); i++) next.add(rows[i].id)
+    else if (next.has(id)) next.delete(id)
+    else next.add(id)
+    anchor.current = id
+    onChecked(next)
   }
 
   const unreadShown = rows.filter((r) => !r.isRead).length
   // With several accounts in the unified view, each row says which mailbox it came from.
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts])
   const showAccount = !view.accountId && accounts.length > 1
+  const filtered = activeCount(filters) > 0
+  const anyChecked = checked.size > 0
+  const described = describeFilters(filters)
 
   return (
     <section aria-label="Emails" className={`glass fade flex min-h-0 min-w-0 flex-col overflow-hidden ${className}`} style={{ ['--d' as string]: '60ms' }}>
       <header className="flex items-end justify-between gap-3 px-4 pt-4 pb-3">
         <div className="min-w-0">
           <h1 className="truncate text-[17px] font-semibold tracking-tight">{search ? `Results for "${search}"` : viewTitle(view, accounts)}</h1>
-          <p className="mt-0.5 text-xs text-muted tabular-nums">
-            {query.isLoading ? 'Loading' : `${rows.length}${query.hasNextPage ? '+' : ''} emails${unreadShown ? `, ${unreadShown} unread` : ''}`}
+          <p className="mt-0.5 truncate text-xs text-muted tabular-nums">
+            {query.isLoading ? 'Loading' : `${rows.length}${query.hasNextPage ? '+' : ''} emails${unreadShown ? `, ${unreadShown} unread` : ''}${described ? ` · ${described}` : ''}`}
           </p>
         </div>
-        <button
-          onClick={() => onView({ ...view, unreadOnly: !view.unreadOnly })}
-          aria-pressed={!!view.unreadOnly}
-          className={`press h-7 shrink-0 rounded-[8px] px-2.5 text-xs font-medium ${view.unreadOnly ? 'bg-primary text-on-primary' : 'bg-field text-ink-soft hover:text-ink'}`}
-        >
-          Unread
-        </button>
       </header>
+
+      {anyChecked ? (
+        <BulkBar
+          count={checked.size}
+          loaded={rows.length}
+          onSelectAll={() => onChecked(new Set(rows.map((r) => r.id)))}
+          onRead={(read) => onSetRead([...checked], read)}
+          onTag={(tag) => onSetTag([...checked], tag)}
+          onClear={() => onChecked(new Set())}
+        />
+      ) : (
+        <FilterBar view={view} filters={filters} onChange={onFilters} />
+      )}
 
       <div ref={scrollRef} tabIndex={0} onKeyDown={onKeyDown} className="relative flex-1 overflow-y-auto px-2 pb-2 outline-none">
         {query.isLoading && <SkeletonRows />}
         {!query.isLoading && rows.length === 0 && (
           <div className="enter flex flex-col items-center gap-2 px-8 pt-16 text-center text-muted">
             <TrayIcon size={28} weight="light" />
-            <p className="text-[13px]">{search ? 'No emails match your search.' : view.unreadOnly ? 'Nothing unread here.' : 'No emails here yet.'}</p>
+            <p className="text-[13px]">{search ? 'No emails match your search.' : filtered ? 'No emails match these filters.' : 'No emails here yet.'}</p>
+            {filtered && (
+              <button onClick={() => onFilters({})} className="press mt-1 h-7 rounded-[8px] bg-field px-2.5 text-xs font-medium text-ink-soft hover:bg-selected hover:text-ink">
+                Clear filters
+              </button>
+            )}
           </div>
         )}
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
           {items.map((vi) => {
             const m = rows[vi.index]
             const selected = m?.id === selectedId
+            const isChecked = !!m && checked.has(m.id)
             return (
               <div key={m?.id ?? 'loader'} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: vi.size, transform: `translateY(${vi.start}px)` }}>
                 {m ? (
-                  <button
-                    data-row
-                    onClick={() => onSelect(m.id)}
-                    aria-current={selected ? 'true' : undefined}
-                    className={`press flex h-[80px] w-full gap-3 rounded-[10px] px-2.5 py-2.5 text-left ${selected ? 'bg-selected' : 'hover:bg-hover'}`}
-                  >
-                    <Avatar name={m.fromName} addr={m.fromAddr} />
-                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className={`truncate text-[13px] ${m.isRead ? 'text-ink-soft' : 'font-semibold text-ink'}`}>{m.fromName || m.fromAddr || 'Unknown sender'}</span>
-                        {!m.isRead && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
-                        <span className="ml-auto shrink-0 text-[11.5px] text-muted tabular-nums">{shortDate(m.receivedAt)}</span>
+                  <div className="group relative h-[80px]">
+                    <button
+                      data-row
+                      onClick={(e) => {
+                        if (e.shiftKey || e.ctrlKey || e.metaKey) toggleChecked(m.id, e.shiftKey)
+                        else {
+                          anchor.current = m.id
+                          onSelect(m.id)
+                        }
+                      }}
+                      aria-current={selected ? 'true' : undefined}
+                      className={`press flex h-[80px] w-full gap-3 rounded-[10px] px-2.5 py-2.5 text-left ${selected || isChecked ? 'bg-selected' : 'hover:bg-hover'}`}
+                    >
+                      <Avatar name={m.fromName} addr={m.fromAddr} />
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`truncate text-[13px] ${m.isRead ? 'text-ink-soft' : 'font-semibold text-ink'}`}>{m.fromName || m.fromAddr || 'Unknown sender'}</span>
+                          {!m.isRead && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="Unread" />}
+                          <span className="ml-auto shrink-0 text-[11.5px] text-muted tabular-nums">{shortDate(m.receivedAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`truncate text-[13px] ${m.isRead ? 'text-ink-soft' : 'font-medium text-ink'}`}>{m.subject || '(no subject)'}</span>
+                          {m.hasAttachments && <PaperclipIcon size={13} className="shrink-0 text-muted" aria-label="Has attachments" />}
+                          {m.tag && (
+                            <span className="ml-auto">
+                              <TagChip tag={m.tag} source={m.tagSource} small />
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted">
+                          {showAccount && accountById.get(m.accountId) && <AccountMark account={accountById.get(m.accountId)!} />}
+                          <span className="truncate">{m.snippet}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`truncate text-[13px] ${m.isRead ? 'text-ink-soft' : 'font-medium text-ink'}`}>{m.subject || '(no subject)'}</span>
-                        {m.hasAttachments && <PaperclipIcon size={13} className="shrink-0 text-muted" aria-label="Has attachments" />}
-                        {m.tag && (
-                          <span className="ml-auto">
-                            <TagChip tag={m.tag} source={m.tagSource} small />
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-muted">
-                        {showAccount && accountById.get(m.accountId) && <AccountMark account={accountById.get(m.accountId)!} />}
-                        <span className="truncate">{m.snippet}</span>
-                      </div>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      role="checkbox"
+                      aria-checked={isChecked}
+                      aria-label={`Select email from ${m.fromName || m.fromAddr || 'unknown sender'}`}
+                      onClick={(e) => toggleChecked(m.id, e.shiftKey)}
+                      className={`press absolute top-2.5 left-2.5 grid h-8 w-8 place-items-center rounded-[9px] shadow-[inset_0_0_0_1.5px_var(--muted)] focus-visible:opacity-100 ${isChecked ? 'bg-primary text-on-primary opacity-100 shadow-none' : anyChecked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                      style={isChecked ? undefined : { background: 'var(--glass-solid)' }}
+                    >
+                      {isChecked && <CheckIcon size={15} weight="bold" />}
+                    </button>
+                    <RowActions m={m} onSetRead={onSetRead} onSetTag={onSetTag} />
+                  </div>
                 ) : (
                   <div className="flex justify-center p-3">
                     <div className="skeleton h-2.5 w-24" />

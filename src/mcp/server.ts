@@ -125,13 +125,19 @@ export function createMailMcpServer(core: Core): McpServer {
         from: z.string().optional().describe('Part of the sender name or address.'),
         accountId: z.string().optional(),
         since: SinceSchema,
+        until: z
+          .string()
+          .optional()
+          .describe('Only emails received before this date, like 2026-09-28. With since, this gives an exact range such as last week.'),
         unreadOnly: z.boolean().optional(),
         limit: z.number().int().min(1).max(50).optional().describe('Default 20.')
       },
       annotations: { readOnlyHint: true }
     },
-    async ({ query, tag, from, accountId, since, unreadOnly, limit }) => {
-      const page = core.store.listMessages({ query, tag, from, accountId, since: parseSince(since), unreadOnly, limit: limit ?? 20 })
+    async ({ query, tag, from, accountId, since, until, unreadOnly, limit }) => {
+      const untilMs = until ? Date.parse(until) : undefined
+      if (until && Number.isNaN(untilMs)) throw new Error(`Could not understand until="${until}". Use a date like 2026-09-28.`)
+      const page = core.store.listMessages({ query, tag, from, accountId, since: parseSince(since), until: untilMs, unreadOnly, limit: limit ?? 20 })
       if (!page.items.length) return text('No emails match.')
       return text(`${page.items.length} email(s)${page.nextCursor ? ' (more exist; narrow the search)' : ''}:\n${page.items.map(line).join('\n')}`)
     }

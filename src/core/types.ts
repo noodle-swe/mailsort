@@ -68,11 +68,31 @@ export interface ListQuery {
   query?: string
   unreadOnly?: boolean
   from?: string
-  /** Epoch ms. */
+  /** Epoch ms, inclusive. */
   since?: number
+  /** Epoch ms, exclusive. */
+  until?: number
+  hasAttachments?: boolean
+  /** Has a calendar invite. */
+  hasInvite?: boolean
+  /** Newsletters and other bulk mail (has a List-Unsubscribe header). */
+  isNewsletter?: boolean
+  /** Tagged Meeting, Questions or Needs Attention. */
+  actionOnly?: boolean
+  /** Tagged by a rule or the model with low confidence, or the model said Other: worth a second look. */
+  needsReview?: boolean
+  /** Oldest first instead of newest first. */
+  oldestFirst?: boolean
   /** Opaque cursor from a previous page. */
   cursor?: string
   limit?: number
+}
+
+/** Emails per account and tag in a date range. */
+export interface DigestRow {
+  accountId: string
+  tag: string
+  count: number
 }
 
 export interface ListPage {

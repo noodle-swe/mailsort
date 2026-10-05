@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { ipcMain, shell, type BrowserWindow } from 'electron'
 import type { Core } from '../core/core'
 import { isTag } from '../core/tags'
-import type { ListQuery, Provider } from '../core/types'
+import { sanitizeQuery } from '../core/query'
+import type { Provider } from '../core/types'
 import type { AppEvent, AppStatus, ChatTurn } from '../preload/api'
 import type { ChatAgent } from './agent'
 import type { HttpMcpServer } from './http-mcp'
@@ -16,20 +17,6 @@ interface Deps {
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined)
-
-function sanitizeQuery(q: unknown): ListQuery {
-  const o = (q ?? {}) as Record<string, unknown>
-  return {
-    accountId: str(o.accountId),
-    tag: o.tag === 'Untagged' || isTag(o.tag) ? (o.tag as ListQuery['tag']) : undefined,
-    query: str(o.query)?.slice(0, 200),
-    unreadOnly: o.unreadOnly === true,
-    from: str(o.from)?.slice(0, 200),
-    since: typeof o.since === 'number' ? o.since : undefined,
-    cursor: str(o.cursor),
-    limit: typeof o.limit === 'number' ? o.limit : undefined
-  }
-}
 
 export function registerIpc({ core, agent, httpMcp, window, status }: Deps): void {
   const send = (event: AppEvent) => {
@@ -58,6 +45,17 @@ export function registerIpc({ core, agent, httpMcp, window, status }: Deps): voi
   handle('messages:body', (id) => core.getBody(String(id)))
   handle('messages:markRead', (id) => {
     void core.markRead(String(id))
+  })
+  handle('messages:setRead', (ids, read) => {
+    if (!Array.isArray(ids) || typeof read !== 'boolean') throw new Error('Invalid read request')
+    void core.setRead(ids.map(String).slice(0, 1000), read)
+  })
+  handle('digest:get', (range) => {
+    const o = (range ?? {}) as Record<string, unknown>
+    return core.store.digest({
+      since: typeof o.since === 'number' ? o.since : undefined,
+      until: typeof o.until === 'number' ? o.until : undefined
+    })
   })
   handle('messages:unread', () => core.store.unreadCounts())
 

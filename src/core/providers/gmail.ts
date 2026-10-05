@@ -263,12 +263,14 @@ export class GmailProvider implements MailProvider {
     return label.id
   }
 
-  async setRead(providerId: string, read: boolean): Promise<void> {
-    await this.http.json(`${API}/messages/${providerId}/modify`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(read ? { removeLabelIds: ['UNREAD'] } : { addLabelIds: ['UNREAD'] })
-    })
+  async setRead(providerIds: string[], read: boolean): Promise<void> {
+    for (const ids of chunk(providerIds, 1000)) {
+      await this.http.json(`${API}/messages/batchModify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids, ...(read ? { removeLabelIds: ['UNREAD'] } : { addLabelIds: ['UNREAD'] }) })
+      })
+    }
   }
 
   async applyTags(changes: TagChange[]): Promise<ApplyResult> {

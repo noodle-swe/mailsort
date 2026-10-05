@@ -225,16 +225,25 @@ export class Core {
     return body
   }
 
-  /** Marks a message read here at once, then in Gmail/Outlook in the background (it never blocks the UI). */
-  async markRead(messageId: string): Promise<void> {
-    const msg = this.store.getMessage(messageId)
-    if (!msg || msg.isRead) return
-    this.store.markRead(messageId)
-    try {
-      await this.providerFor(msg.accountId).setRead(msg.providerId, true)
-    } catch (err) {
-      this.events.emit({ type: 'read-sync-failed', accountId: msg.accountId, error: (err as Error).message })
+  /**
+   * Marks messages read or unread here at once, then in Gmail/Outlook in the background (it never blocks the UI).
+   * Messages that already have the wanted state are skipped.
+   */
+  async setRead(messageIds: string[], read: boolean): Promise<void> {
+    const changed = messageIds.map((id) => this.store.getMessage(id)).filter((m): m is NonNullable<typeof m> => !!m && m.isRead !== read)
+    for (const m of changed) this.store.setRead(m.id, read)
+    for (const [accountId, items] of Map.groupBy(changed, (m) => m.accountId)) {
+      this.notifyMessages(accountId)
+      try {
+        await this.providerFor(accountId).setRead(items.map((m) => m.providerId), read)
+      } catch (err) {
+        this.events.emit({ type: 'read-sync-failed', accountId, error: (err as Error).message })
+      }
     }
+  }
+
+  markRead(messageId: string): Promise<void> {
+    return this.setRead([messageId], true)
   }
 
   // ---------------------------------------------------------------- tagging

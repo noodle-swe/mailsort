@@ -20,8 +20,30 @@ export async function captureScreens(win: BrowserWindow, outDir: string, prefix 
   }
   const click = (selector: string) => wc.executeJavaScript(`document.querySelector(${JSON.stringify(selector)})?.click()`)
 
+  const clickText = (scope: string, text: string) =>
+    wc.executeJavaScript(
+      `[...document.querySelectorAll(${JSON.stringify(scope)})].find((b) => b.textContent.trim().startsWith(${JSON.stringify(text)}))?.click()`
+    )
+
   await sleep(2500)
   await shot('overview')
+
+  // A tag view with a filter on, two emails ticked for a bulk action, and the shortcuts sheet.
+  await clickText('nav[aria-label="Tags"] button', 'Applied')
+  await sleep(800)
+  await clickText('[role="group"][aria-label="Filters"] button', 'Unread')
+  await sleep(600)
+  await shot('filters')
+  await wc.executeJavaScript(`document.querySelectorAll('[role="checkbox"]').forEach((b, i) => i < 2 && b.click())`)
+  await sleep(600)
+  await shot('bulk')
+  await click('button[aria-label^="Keyboard shortcuts"]')
+  await sleep(600)
+  await shot('shortcuts')
+  await click('button[aria-label="Close shortcuts"]')
+  await clickText('nav[aria-label="Mailboxes"] button', 'All inboxes')
+  await sleep(800)
+
   await click('[data-row]')
   await sleep(3000) // the sandboxed email frame paints after the pane
   await shot('reading')

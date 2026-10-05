@@ -167,13 +167,13 @@ describe('GmailProvider', () => {
 
   it('marks read by removing UNREAD, and unread by adding it', async () => {
     core = makeCore()
-    const http = fakeHttp([['/messages/g1/modify', () => ({})]])
+    const http = fakeHttp([['/messages/batchModify', () => undefined]])
     const p = new GmailProvider('acc', 'sam@example.com', http, core.store)
-    await p.setRead('g1', true)
-    await p.setRead('g1', false)
+    await p.setRead(['g1', 'g2'], true)
+    await p.setRead(['g1'], false)
     expect(http.calls.map((c) => [c.init?.method, JSON.parse(c.init!.body as string)])).toEqual([
-      ['POST', { removeLabelIds: ['UNREAD'] }],
-      ['POST', { addLabelIds: ['UNREAD'] }]
+      ['POST', { ids: ['g1', 'g2'], removeLabelIds: ['UNREAD'] }],
+      ['POST', { ids: ['g1'], addLabelIds: ['UNREAD'] }]
     ])
   })
 })
@@ -239,11 +239,21 @@ describe('Outlook', () => {
     expect(res.failed[0]).toMatchObject({ providerId: 'o2' })
   })
 
-  it('marks read with a PATCH on the message', async () => {
-    const http = fakeHttp([['/me/messages/o%2F1', () => ({})]])
-    await new OutlookProvider(http).setRead('o/1', true)
-    expect(http.calls[0].url).toContain('/me/messages/o%2F1')
-    expect(http.calls[0].init).toMatchObject({ method: 'PATCH', body: JSON.stringify({ isRead: true }) })
+  it('marks read with PATCH requests in a  and fails when one is refused', async () => {
+    const http = fakeHttp([
+      ['/', (_u, init) => {
+        const { requests } = JSON.parse(init!.body as string)
+        return { responses: requests.map((r: { id: string }) => ({ id: r.id, status: 200 })) }
+      }]
+    ])
+    await new OutlookProvider(http).setRead(['o/1', 'o2'], true)
+    const sent = JSON.parse(http.calls[0].init!.body as string).requests
+    expect(sent.map((r: { url: string; method: string; body: unknown }) => [r.method, r.url, r.body])).toEqual([
+      ['PATCH', '/me/messages/o%2F1', { isRead: true }],
+      ['PATCH', '/me/messages/o2', { isRead: true }]
+    ])
+    const refused = fakeHttp([['/', () => ({ responses: [{ id: '0', status: 403, body: { error: { message: 'Forbidden' } } }] })]])
+    await expect(new OutlookProvider(refused).setRead(['o1'], true)).rejects.toThrow('HTTP 403 Forbidden')
   })
 })
 
@@ -254,15 +264,18 @@ describe('Core.markRead', () => {
   it('marks read locally at once and tells the mailbox', async () => {
     let accountId: string
     ;({ core, accountId } = seededCore())
-    const calls: [string, boolean][] = []
-    ;(core as unknown as { providers: Map<string, unknown> }).providers.set(accountId, { setRead: async (id: string, read: boolean) => void calls.push([id, read]) })
+    const calls: [string[], boolean][] = []
+    ;(core as unknown as { providers: Map<string, unknown> }).providers.set(accountId, { setRead: async (ids: string[], read: boolean) => void calls.push([ids, read]) })
     const id = `${accountId}:m1`
     expect(core.store.getMessage(id)!.isRead).toBe(false)
     const pending = core.markRead(id)
     expect(core.store.getMessage(id)!.isRead).toBe(true) // before the mailbox answered
     await pending
     await core.markRead(id) // already read: no second request
-    expect(calls).toEqual([['m1', true]])
+    expect(calls).toEqual([[['m1'], true]])
+    await core.setRead([id], false) // and back to unread
+    expect(core.store.getMessage(id)!.isRead).toBe(false)
+    expect(calls.at(-1)).toEqual([['m1'], false])
   })
 
   it('keeps it read locally and reports when the mailbox refuses', async () => {

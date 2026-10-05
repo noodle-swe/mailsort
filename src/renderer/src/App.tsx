@@ -1,21 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChatCircleTextIcon, ColumnsIcon, GearSixIcon, ListIcon, MagnifyingGlassIcon, RowsIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
+import { ChatCircleTextIcon, ColumnsIcon, GearSixIcon, KeyboardIcon, ListIcon, MagnifyingGlassIcon, RowsIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import type { Tag } from '../../core/tags'
 import type { Provider, TaggingProgress } from '../../core/types'
 import { api, useAppEvents } from './lib/api'
 import { cleanError } from './lib/format'
+import { cleanFilters, loadFilters, saveFilters, viewKey, type Filters } from './lib/filters'
+import { useShortcuts } from './lib/useShortcuts'
 import Sidebar from './components/Sidebar'
 import MessageList from './components/MessageList'
 import ReadingPane from './components/ReadingPane'
 import ChatPanel from './components/ChatPanel'
 import SettingsSheet from './components/SettingsSheet'
+import ShortcutsSheet from './components/ShortcutsSheet'
 import Welcome from './components/Welcome'
 
 export interface View {
   accountId?: string
   tag?: Tag | 'Untagged'
-  unreadOnly?: boolean
 }
 
 function IconButton({ label, active, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -33,6 +35,9 @@ function IconButton({ label, active, onClick, children }: { label: string; activ
 }
 
 export type Layout = 'columns' | 'split' | 'list'
+
+/** Second key after "g": jump to a tag. */
+const GO_TO: Record<string, Tag> = { a: 'Applied', r: 'Rejected', m: 'Meeting', q: 'Questions', n: 'Needs Attention', j: 'Junk', o: 'Other' }
 
 const LAYOUTS: { id: Layout; label: string; icon: React.ReactNode }[] = [
   { id: 'columns', label: 'Columns: list beside the email', icon: <ColumnsIcon /> },
@@ -77,9 +82,11 @@ interface TopBarProps {
   onOpenSettings: () => void
   layout: Layout
   onLayout: (l: Layout) => void
+  onHelp: () => void
+  searchRef: React.RefObject<HTMLInputElement | null>
 }
 
-function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLayout }: TopBarProps) {
+function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLayout, onHelp, searchRef }: TopBarProps) {
   const [draft, setDraft] = useState('')
   // Debounce typing so each keystroke doesn't hit SQLite.
   useEffect(() => {
@@ -96,9 +103,11 @@ function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLa
       <label className="glass-side no-drag flex h-8 w-[min(460px,42vw)] items-center gap-2 rounded-[10px] px-3 text-muted focus-within:text-ink">
         <MagnifyingGlassIcon size={15} />
         <input
+          ref={searchRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Search mail"
+          onKeyDown={(e) => e.key === 'Escape' && e.currentTarget.blur()}
+          placeholder="Search mail (/)"
           aria-label="Search mail"
           className="w-full bg-transparent text-[13px] text-ink outline-none placeholder:text-muted"
         />
@@ -110,6 +119,9 @@ function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLa
       </label>
       <div className="ml-auto flex gap-1.5">
         <LayoutSwitch layout={layout} onChange={onLayout} />
+        <IconButton label="Keyboard shortcuts (?)" onClick={onHelp}>
+          <KeyboardIcon />
+        </IconButton>
         <IconButton label={chatOpen ? 'Hide assistant' : 'Show assistant'} active={chatOpen} onClick={onToggleChat}>
           <ChatCircleTextIcon weight={chatOpen ? 'fill' : 'regular'} />
         </IconButton>
@@ -131,7 +143,35 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [syncing, setSyncing] = useState<Record<string, boolean>>({})
   const [progress, setProgress] = useState<TaggingProgress | null>(null)
-  const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null)
+  const [notice, setNotice] = useState<{ text: string; error?: boolean; autoHide?: boolean } | null>(null)
+  const [filtersByView, setFiltersByView] = useState<Record<string, Filters>>(loadFilters)
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [helpOpen, setHelpOpen] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const rowIds = useRef<string[]>([])
+  const filters = filtersByView[viewKey(view)] ?? {}
+
+  useEffect(() => saveFilters(filtersByView), [filtersByView])
+  useEffect(() => {
+    if (!notice?.autoHide) return
+    const t = setTimeout(() => setNotice(null), 3500)
+    return () => clearTimeout(t)
+  }, [notice])
+
+  /** The list reports its loaded ids; ticks on rows that are no longer there (re-tagged away, filtered out) are dropped. */
+  const onRows = useCallback((ids: string[]) => {
+    rowIds.current = ids
+    setChecked((prev) => {
+      if (!prev.size) return prev
+      const present = new Set(ids)
+      const next = new Set([...prev].filter((id) => present.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [])
+  const changeSearch = useCallback((s: string) => {
+    setSearch(s)
+    setChecked((prev) => (prev.size ? new Set() : prev))
+  }, [])
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
   const status = useQuery({ queryKey: ['status'], queryFn: api.status })
@@ -140,6 +180,7 @@ export default function App() {
     void qc.invalidateQueries({ queryKey: ['messages'] })
     void qc.invalidateQueries({ queryKey: ['counts'] })
     void qc.invalidateQueries({ queryKey: ['unread'] })
+    void qc.invalidateQueries({ queryKey: ['digest'] })
   }
 
   useAppEvents((e) => {
@@ -181,10 +222,86 @@ export default function App() {
     }
   }
 
-  const changeView = (v: View) => {
+  const setFiltersFor = (key: string, f: Filters) =>
+    setFiltersByView((prev) => {
+      const next = { ...prev }
+      const clean = cleanFilters(f)
+      if (Object.keys(clean).length) next[key] = clean
+      else delete next[key]
+      return next
+    })
+
+  /** Each tag and mailbox remembers its own filters; `f` replaces them (the weekly digest opens a view already filtered). */
+  const changeView = (v: View, f?: Filters) => {
+    if (f) setFiltersFor(viewKey(v), f)
     setView(v)
     setSelectedId(null)
+    setChecked(new Set())
   }
+
+  const applyRead = async (ids: string[], read: boolean) => {
+    if (!ids.length) return
+    try {
+      await api.setRead(ids, read)
+      refreshMail()
+      void qc.invalidateQueries({ queryKey: ['message'] })
+    } catch (err) {
+      setNotice({ text: cleanError(err), error: true })
+    }
+  }
+
+  const applyTag = async (ids: string[], tag: Tag) => {
+    if (!ids.length) return
+    try {
+      const n = await api.setTag(ids, tag)
+      setNotice({ text: `Tagged ${n} ${n === 1 ? 'email' : 'emails'} as ${tag}.`, autoHide: true })
+    } catch (err) {
+      setNotice({ text: cleanError(err), error: true })
+    }
+  }
+
+  /** Keyboard shortcuts act on the ticked emails, else on the open one. */
+  const targetIds = () => (checked.size ? [...checked] : selectedId ? [selectedId] : [])
+
+  useShortcuts(
+    {
+      move: (delta) => {
+        const ids = rowIds.current
+        if (!ids.length) return
+        const at = selectedId ? ids.indexOf(selectedId) : -1
+        const next = ids[Math.min(ids.length - 1, Math.max(0, at + delta))]
+        if (next) setSelectedId(next)
+      },
+      toggleCheck: () => {
+        if (!selectedId) return
+        setChecked((prev) => {
+          const next = new Set(prev)
+          if (!next.delete(selectedId)) next.add(selectedId)
+          return next
+        })
+      },
+      toggleRead: () => {
+        const ids = targetIds()
+        if (!ids.length) return
+        void Promise.all(ids.map((id) => api.getMessage(id))).then((msgs) => applyRead(ids, msgs.some((m) => m && !m.isRead)))
+      },
+      setTag: (tag) => void applyTag(targetIds(), tag),
+      focusSearch: () => searchRef.current?.focus(),
+      goTo: (key) => {
+        if (key === 'i') changeView({})
+        else if (GO_TO[key]) changeView({ accountId: view.accountId, tag: GO_TO[key] })
+        else return false
+        return true
+      },
+      toggleChat: () => setChatOpen((o) => !o),
+      escape: () => {
+        if (checked.size) setChecked(new Set())
+        else if (layout === 'list' && selectedId) setSelectedId(null)
+      },
+      help: () => setHelpOpen(true)
+    },
+    !settingsOpen && !helpOpen
+  )
 
   const changeLayout = (l: Layout) => {
     setLayout(l)
@@ -198,18 +315,34 @@ export default function App() {
   const hasAccounts = (accounts.data?.length ?? 0) > 0
 
   const list = (className?: string) => (
-    <MessageList view={view} onView={changeView} accounts={accounts.data ?? []} search={search} selectedId={selectedId} onSelect={setSelectedId} className={className} />
+    <MessageList
+      view={view}
+      filters={filters}
+      onFilters={(f) => setFiltersFor(viewKey(view), f)}
+      accounts={accounts.data ?? []}
+      search={search}
+      selectedId={selectedId}
+      onSelect={setSelectedId}
+      checked={checked}
+      onChecked={setChecked}
+      onRows={onRows}
+      onSetRead={(ids, read) => void applyRead(ids, read)}
+      onSetTag={(ids, tag) => void applyTag(ids, tag)}
+      className={className}
+    />
   )
 
   return (
     <div className="relative flex h-full flex-col">
       <TopBar
-        onSearch={setSearch}
+        onSearch={changeSearch}
         chatOpen={chatOpen}
         onToggleChat={() => setChatOpen((o) => !o)}
         onOpenSettings={() => setSettingsOpen(true)}
         layout={layout}
         onLayout={changeLayout}
+        onHelp={() => setHelpOpen(true)}
+        searchRef={searchRef}
       />
 
       <div className="flex min-h-0 flex-1 gap-2.5 px-2.5 pb-2.5">
@@ -247,6 +380,7 @@ export default function App() {
       </div>
 
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
+      {helpOpen && <ShortcutsSheet onClose={() => setHelpOpen(false)} />}
 
       {notice && (
         <div role="status" className="glass-solid enter fixed bottom-5 left-1/2 z-30 flex max-w-xl -translate-x-1/2 items-start gap-3 px-4 py-3">

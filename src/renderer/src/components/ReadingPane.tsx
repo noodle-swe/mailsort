@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, ArrowUpRightIcon, CaretDownIcon, ImageIcon, SparkleIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ArrowUpRightIcon, CaretDownIcon, EnvelopeSimpleIcon, EnvelopeSimpleOpenIcon, ImageIcon, SparkleIcon } from '@phosphor-icons/react'
+import { dateRange, DATE_PRESET_LABEL } from '../../../core/dates'
 import { ACTION_TAGS, TAGS, TAG_INFO, type Tag } from '../../../core/tags'
 import type { TaggingProgress } from '../../../core/types'
 import { api } from '../lib/api'
 import { escapeHtml, fullDate, greeting } from '../lib/format'
+import type { Filters } from '../lib/filters'
 import type { View } from '../App'
 import backdrop from '../assets/backdrop.webp'
 import Avatar from './Avatar'
@@ -22,16 +24,99 @@ img{max-width:100%;height:auto}pre{white-space:pre-wrap;font:inherit;margin:0}a{
   return body.isHtml ? head + body.content : `${head}<pre>${escapeHtml(body.content)}</pre>`
 }
 
-const WEEK = 7 * 86_400_000
+type OpenView = (v: View, filters?: Filters) => void
 
-function Overview({ onView, progress }: { onView: (v: View) => void; progress: TaggingProgress | null }) {
+const DIGEST_TAGS: Tag[] = ['Applied', 'Rejected', 'Meeting', 'Questions', 'Needs Attention']
+const DIGEST_HEADING: Partial<Record<Tag, string>> = { 'Needs Attention': 'Attention' }
+type Period = 'week' | 'lastWeek'
+
+/** Emails per inbox and tag for this week or last week. A number opens the list already filtered to it. */
+function Digest({ onView }: { onView: OpenView }) {
+  const [period, setPeriod] = useState<Period>('week')
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
+  const digest = useQuery({ queryKey: ['digest', period], queryFn: () => api.digest(dateRange(period)) })
+  const inboxes = accounts.data ?? []
+  const count = (accountId: string | null, tag: Tag) =>
+    (digest.data ?? []).filter((r) => r.tag === tag && (accountId === null || r.accountId === accountId)).reduce((n, r) => n + r.count, 0)
+
+  const cell = (accountId: string | null, tag: Tag) => {
+    const n = count(accountId, tag)
+    return (
+      <td key={tag} className="px-0.5 py-0.5 text-right">
+        <button
+          disabled={!n}
+          onClick={() => onView({ accountId: accountId ?? undefined, tag }, { date: period })}
+          title={n ? `Show ${tag} from ${DATE_PRESET_LABEL[period].toLowerCase()}` : undefined}
+          className={`press w-full rounded-[7px] px-2 py-1 text-right tabular-nums ${n ? 'font-medium hover:bg-hover' : 'text-muted/60'}`}
+        >
+          {n}
+        </button>
+      </td>
+    )
+  }
+
+  return (
+    <section className="enter px-3" style={{ ['--d' as string]: '140ms' }} aria-label="Weekly digest">
+      <div className="mb-2.5 flex items-center justify-between gap-3">
+        <h3 className="text-[13px] font-medium text-ink-soft">Digest</h3>
+        <div role="radiogroup" aria-label="Period" className="flex gap-0.5 rounded-[8px] bg-field p-0.5">
+          {(['week', 'lastWeek'] as const).map((p) => (
+            <button
+              key={p}
+              role="radio"
+              aria-checked={period === p}
+              onClick={() => setPeriod(p)}
+              className={`press h-6 rounded-[6px] px-2.5 text-xs font-medium ${period === p ? 'bg-primary text-on-primary' : 'text-ink-soft hover:text-ink'}`}
+            >
+              {DATE_PRESET_LABEL[p]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded-[12px] bg-field p-1.5">
+        <table className="w-full min-w-[420px] text-[13px]">
+          <thead>
+            <tr className="text-xs text-muted">
+              <th scope="col" className="px-2 pt-1 pb-1.5 text-left font-medium">
+                Inbox
+              </th>
+              {DIGEST_TAGS.map((t) => (
+                <th key={t} scope="col" className="px-2 pt-1 pb-1.5 text-right font-medium">
+                  <span className="inline-flex items-center gap-1.5">
+                    <TagSwatch tag={t} />
+                    {DIGEST_HEADING[t] ?? t}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {inboxes.map((a) => (
+              <tr key={a.id} className="border-t border-line">
+                <th scope="row" className="max-w-[180px] truncate px-2 py-1 text-left font-normal" title={a.email}>
+                  {a.email}
+                </th>
+                {DIGEST_TAGS.map((t) => cell(a.id, t))}
+              </tr>
+            ))}
+            {inboxes.length > 1 && (
+              <tr className="border-t border-line">
+                <th scope="row" className="px-2 py-1 text-left font-medium">
+                  All inboxes
+                </th>
+                {DIGEST_TAGS.map((t) => cell(null, t))}
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+function Overview({ onView, progress }: { onView: OpenView; progress: TaggingProgress | null }) {
   const counts = useQuery({ queryKey: ['counts', null], queryFn: () => api.tagCounts() })
-  const weekSince = useMemo(() => Date.now() - WEEK, [])
-  const week = useQuery({ queryKey: ['counts', 'week'], queryFn: () => api.listMessages({ since: weekSince, limit: 200 }) })
   const needAction = ACTION_TAGS.reduce((n, t) => n + (counts.data?.[t] ?? 0), 0)
-  const weekItems = week.data?.items ?? []
-  const weekApplied = weekItems.filter((m) => m.tag === 'Applied').length
-  const weekRejected = weekItems.filter((m) => m.tag === 'Rejected').length
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
@@ -70,12 +155,9 @@ function Overview({ onView, progress }: { onView: (v: View) => void; progress: T
             </button>
           ))}
         </div>
-        {(weekApplied > 0 || weekRejected > 0) && (
-          <p className="mt-4 text-[13px] text-muted">
-            This week: {weekApplied} {weekApplied === 1 ? 'application' : 'applications'} confirmed, {weekRejected} {weekRejected === 1 ? 'rejection' : 'rejections'}.
-          </p>
-        )}
       </section>
+
+      <Digest onView={onView} />
     </div>
   )
 }
@@ -88,7 +170,7 @@ function BodySkeleton() {
   )
 }
 
-export default function ReadingPane({ id, onView, progress, onBack }: { id: string | null; onView: (v: View) => void; progress: TaggingProgress | null; onBack?: () => void }) {
+export default function ReadingPane({ id, onView, progress, onBack }: { id: string | null; onView: OpenView; progress: TaggingProgress | null; onBack?: () => void }) {
   const qc = useQueryClient()
   const [allowImages, setAllowImages] = useState(false)
   useEffect(() => setAllowImages(false), [id])
@@ -105,9 +187,23 @@ export default function ReadingPane({ id, onView, progress, onBack }: { id: stri
   })
   const unreadId = message.data && !message.data.isRead ? message.data.id : null
   const { mutate: markReadNow } = markRead
+  // Opening marks an email read once. Without this guard, "Mark unread" would be undone at once.
+  const autoRead = useRef<string | null>(null)
   useEffect(() => {
-    if (unreadId) markReadNow(unreadId)
+    if (unreadId && autoRead.current !== unreadId) {
+      autoRead.current = unreadId
+      markReadNow(unreadId)
+    }
   }, [unreadId, markReadNow])
+
+  const setRead = useMutation({
+    mutationFn: (read: boolean) => api.setRead([id!], read),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['message', id] })
+      void qc.invalidateQueries({ queryKey: ['messages'] })
+      void qc.invalidateQueries({ queryKey: ['unread'] })
+    }
+  })
 
   const setTag = useMutation({ mutationFn: (tag: Tag) => api.setTag([id!], tag) })
 
@@ -140,6 +236,15 @@ export default function ReadingPane({ id, onView, progress, onBack }: { id: stri
                 <span />
               )}
               <div className="flex shrink-0 items-center gap-1.5">
+                <button
+                  onClick={() => setRead.mutate(!m.isRead)}
+                  disabled={setRead.isPending}
+                  title={m.isRead ? 'Mark as unread (u)' : 'Mark as read (u)'}
+                  className="press flex h-8 items-center gap-1.5 rounded-[10px] bg-field px-3 text-[13px] font-medium hover:bg-selected disabled:opacity-60"
+                >
+                  {m.isRead ? <EnvelopeSimpleIcon size={14} /> : <EnvelopeSimpleOpenIcon size={14} />}
+                  {m.isRead ? 'Mark unread' : 'Mark read'}
+                </button>
                 <label className="relative">
                   <span className="sr-only">Tag</span>
                   {m.tag && (

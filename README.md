@@ -31,6 +31,14 @@ Click **Add Gmail account** or **Add Outlook account** as many times as you need
 - Tagging, search and the MCP tools work across all accounts, or on one account with `accountId`.
 - Signing in again with an address you already added refreshes that account instead of adding a duplicate.
 
+## Finding and sorting mail
+
+- **Filters per view.** Every tag and mailbox has a filter bar with the filters that fit it: dates (Today, This week, Last week, 30 days) for Applied and Rejected, **Has invite** for Meeting, **Oldest first** for Questions and Needs Attention, **Newsletters** for Junk, **Needs review** for Other (low confidence tags and model guesses). Each view remembers its own filters.
+- **Digest.** The overview shows emails per inbox and tag for this week or last week. A number opens the list already filtered to it.
+- **Bulk actions.** Tick the box over a sender's initials (or Ctrl-click a row, Shift-click for a range), then mark read, mark unread or set a tag for all of them. Hover a row for quick read and tag buttons.
+- **Read state syncs.** Opening or marking an email read or unread is also done in Gmail and Outlook.
+- **Keyboard.** `j`/`k` move, `x` selects, `u` toggles read, `1` to `7` set a tag, `g` then a letter jumps to a tag, `/` searches, `?` lists everything.
+
 ## How it works
 
 ```

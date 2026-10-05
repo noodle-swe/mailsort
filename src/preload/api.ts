@@ -5,6 +5,7 @@ import type { Settings } from '../core/settings'
 import type { Tag } from '../core/tags'
 import type {
   Account,
+  DigestRow,
   ListPage,
   ListQuery,
   MessageDetail,
@@ -43,6 +44,8 @@ export interface MailApi {
   getMessage(id: string): Promise<MessageDetail | null>
   getBody(id: string): Promise<{ content: string; isHtml: boolean } | null>
   markRead(id: string): Promise<void>
+  setRead(ids: string[], read: boolean): Promise<void>
+  digest(range: { since?: number; until?: number }): Promise<DigestRow[]>
   setTag(ids: string[], tag: Tag): Promise<number>
   tagCounts(accountId?: string): Promise<Record<string, number>>
   unreadCounts(): Promise<Record<string, number>>

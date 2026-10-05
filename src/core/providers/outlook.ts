@@ -134,12 +134,23 @@ export class OutlookProvider implements MailProvider {
     return { content: m.body?.content ?? '', isHtml: m.body?.contentType === 'html' }
   }
 
-  async setRead(providerId: string, read: boolean): Promise<void> {
-    await this.http.json(`${GRAPH}/me/messages/${encodeURIComponent(providerId)}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ isRead: read })
-    })
+  async setRead(providerIds: string[], read: boolean): Promise<void> {
+    for (const part of chunk(providerIds, 20)) {
+      const requests = part.map((id, i) => ({
+        id: String(i),
+        method: 'PATCH',
+        url: `/me/messages/${encodeURIComponent(id)}`,
+        headers: { 'content-type': 'application/json' },
+        body: { isRead: read }
+      }))
+      const res = await this.http.json<{ responses: { id: string; status: number; body?: { error?: { message?: string } } }[] }>(`${GRAPH}/$batch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ requests })
+      })
+      const bad = res.responses.find((r) => r.status < 200 || r.status >= 300)
+      if (bad) throw new Error(`HTTP ${bad.status} ${bad.body?.error?.message ?? ''}`.trim())
+    }
   }
 
   async applyTags(changes: TagChange[]): Promise<ApplyResult> {

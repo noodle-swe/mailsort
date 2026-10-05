@@ -15,5 +15,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/renderer/**/*", "src/preload/api.ts", "src/core/types.ts", "src/core/tags.ts", "src/core/settings.ts", "src/core/events.ts", "src/core/ollama.ts"]
+  "include": ["src/renderer/**/*", "src/preload/api.ts", "src/core/types.ts", "src/core/tags.ts", "src/core/dates.ts", "src/core/settings.ts", "src/core/events.ts", "src/core/ollama.ts"]
 }

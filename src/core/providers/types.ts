@@ -30,6 +30,6 @@ export interface MailProvider {
   sync(cursor: string | null, sinceMs: number, h: SyncHandlers, signal?: AbortSignal): Promise<string>
   fetchBody(providerId: string): Promise<{ content: string; isHtml: boolean }>
   applyTags(changes: TagChange[]): Promise<ApplyResult>
-  /** Marks one message read or unread in the mailbox. Throws when the provider rejects it. */
-  setRead(providerId: string, read: boolean): Promise<void>
+  /** Marks messages read or unread in the mailbox, batched. Throws when the provider rejects any of them. */
+  setRead(providerIds: string[], read: boolean): Promise<void>
 }

@@ -3,9 +3,10 @@ import { statSync } from 'node:fs'
 import type { StatementSync, SQLInputValue } from 'node:sqlite'
 import { transaction, type Db } from './db'
 import { DEFAULT_SETTINGS, sanitizeSettings, type Settings } from './settings'
-import { isTag, type Tag } from './tags'
+import { ACTION_TAGS, isTag, type Tag } from './tags'
 import type {
   Account,
+  DigestRow,
   IncomingMessage,
   ListPage,
   ListQuery,
@@ -23,6 +24,9 @@ const SUMMARY_COLUMNS = `
   m.subject, m.snippet, m.received_at AS receivedAt, m.is_read AS isRead,
   m.has_attachments AS hasAttachments,
   t.tag, t.source AS tagSource, t.confidence AS tagConfidence`
+
+/** Tags with a confidence below this show up under "Needs review". */
+const REVIEW_CONFIDENCE = 0.7
 
 export interface ClassifyCandidate {
   id: string
@@ -293,18 +297,31 @@ export class Store {
       where.push('m.received_at >= ?')
       params.push(query.since)
     }
+    if (query.until) {
+      where.push('m.received_at < ?')
+      params.push(query.until)
+    }
+    // Every filter below is a constant clause (no per-value SQL), so the statement cache stays small.
+    if (query.hasAttachments) where.push('m.has_attachments = 1')
+    if (query.hasInvite) where.push('m.has_calendar_invite = 1')
+    if (query.isNewsletter) where.push('m.list_unsubscribe = 1')
+    if (query.actionOnly) where.push(`t.tag IN (${ACTION_TAGS.map((a) => `'${a}'`).join(', ')})`)
+    if (query.needsReview) where.push(`(t.source != 'user' AND (t.confidence < ${REVIEW_CONFIDENCE} OR (t.tag = 'Other' AND t.source = 'llm')))`)
+    const asc = !!query.oldestFirst
     if (query.cursor) {
       const sep = query.cursor.indexOf('|')
       const ts = Number(query.cursor.slice(0, sep))
       const id = query.cursor.slice(sep + 1)
       if (sep > 0 && Number.isFinite(ts)) {
-        where.push('(m.received_at < ? OR (m.received_at = ? AND m.id < ?))')
+        const op = asc ? '>' : '<'
+        where.push(`(m.received_at ${op} ? OR (m.received_at = ? AND m.id ${op} ?))`)
         params.push(ts, ts, id)
       }
     }
+    const dir = asc ? 'ASC' : 'DESC'
     const sql = `SELECT ${SUMMARY_COLUMNS} FROM ${from}
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-      ORDER BY m.received_at DESC, m.id DESC LIMIT ${limit + 1}`
+      ORDER BY m.received_at ${dir}, m.id ${dir} LIMIT ${limit + 1}`
     // Dynamic SQL has a bounded number of shapes, so caching the statement is fine.
     const rows = this.q(sql).all(...params) as Record<string, unknown>[]
     const items = rows.slice(0, limit).map(toSummary)
@@ -337,10 +354,33 @@ export class Store {
   }
 
   markRead(id: string): void {
-    this.q('UPDATE messages SET is_read = 1 WHERE id = ?').run(id)
+    this.setRead(id, true)
   }
 
-  tagCounts(opts: { accountId?: string; since?: number } = {}): Record<string, number> {
+  setRead(id: string, read: boolean): void {
+    this.q('UPDATE messages SET is_read = ? WHERE id = ?').run(read ? 1 : 0, id)
+  }
+
+  /** Emails per account and tag in [since, until): one row per combination that has any. */
+  digest(opts: { since?: number; until?: number } = {}): DigestRow[] {
+    const where: string[] = []
+    const params: SQLInputValue[] = []
+    if (opts.since) {
+      where.push('m.received_at >= ?')
+      params.push(opts.since)
+    }
+    if (opts.until) {
+      where.push('m.received_at < ?')
+      params.push(opts.until)
+    }
+    return this.q(
+      `SELECT m.account_id AS accountId, coalesce(t.tag, 'Untagged') AS tag, count(*) AS count
+       FROM messages m LEFT JOIN tags t ON t.message_id = m.id
+       ${where.length ? 'WHERE ' + where.join(' AND ') : ''} GROUP BY 1, 2`
+    ).all(...params) as unknown as DigestRow[]
+  }
+
+  tagCounts(opts: { accountId?: string; since?: number; until?: number } = {}): Record<string, number> {
     const where: string[] = []
     const params: SQLInputValue[] = []
     if (opts.accountId) {
@@ -350,6 +390,10 @@ export class Store {
     if (opts.since) {
       where.push('m.received_at >= ?')
       params.push(opts.since)
+    }
+    if (opts.until) {
+      where.push('m.received_at < ?')
+      params.push(opts.until)
     }
     const rows = this.q(
       `SELECT coalesce(t.tag, 'Untagged') AS tag, count(*) AS n

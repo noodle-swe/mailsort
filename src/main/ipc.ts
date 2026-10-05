@@ -98,7 +98,13 @@ export function registerIpc({ core, agent, httpMcp, window, status }: Deps): voi
     else await httpMcp.stop()
     return settings
   })
-  handle('ollama:check', (url) => core.checkOllama(str(url)))
+  // Same shape check as the "Server address" setting; undefined means "use the saved address".
+  const urlArg = (v: unknown) => (typeof v === 'string' && /^https?:\/\/\S+$/i.test(v.trim()) ? v.trim().replace(/\/+$/, '') : undefined)
+  handle('ollama:check', (url) => core.checkOllama(urlArg(url)))
+  handle('ollama:start', (url) => core.startOllama(urlArg(url)))
+  handle('ollama:pull', (model, url) => core.pullModel(String(model), urlArg(url)))
+  handle('ollama:cancelPull', (model) => core.cancelPull(String(model)))
+  handle('ollama:pulls', () => core.pullStatus())
 
   handle('storage:stats', () => core.store.storageStats())
   handle('storage:clear', () => {

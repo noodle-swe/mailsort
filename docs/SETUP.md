@@ -56,7 +56,9 @@ On the PC with the graphics card:
    ```bat
    ollama pull qwen2.5:7b
    ```
-   An 8 GB GPU fits a 7–8B model. With more memory you can try a larger model; with less, try `qwen2.5:3b`.
+   An 8 GB GPU fits a 7–8B model. With more memory you can try a larger model; with less, try `qwen3:4b` or `qwen2.5:3b`.
+
+   You can also do this from **Settings → Ollama** in MailSort: it shows whether Ollama is installed and running (with a **Start Ollama** button when it is installed but stopped), lists the models already pulled in the model dropdowns, and pulls new ones with a progress bar. Pulling works for a server on another PC too, because the download happens on that PC.
 3. Make Ollama listen on the network. Set these **user environment variables** (Windows: Settings → System → About → Advanced system settings → Environment Variables), then quit Ollama from the tray icon and start it again:
 
    | Variable | Value | Why |

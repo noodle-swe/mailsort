@@ -1,18 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChatCircleTextIcon, ColumnsIcon, GearSixIcon, KeyboardIcon, ListIcon, MagnifyingGlassIcon, RowsIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
+import { ChatCircleTextIcon, ColumnsIcon, GearSixIcon, ImageIcon, KeyboardIcon, ListIcon, MagnifyingGlassIcon, RowsIcon, SidebarSimpleIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import type { Tag } from '../../core/tags'
 import type { Provider, TaggingProgress } from '../../core/types'
 import { api, useAppEvents } from './lib/api'
 import { cleanError } from './lib/format'
 import { cleanFilters, loadFilters, saveFilters, viewKey, type Filters } from './lib/filters'
 import { useShortcuts } from './lib/useShortcuts'
+import { cycleBackdrop } from './lib/appearance'
+import { setSideCollapsed, usePanes } from './lib/panes'
+import { withTransition } from './lib/motion'
 import Sidebar from './components/Sidebar'
 import MessageList from './components/MessageList'
 import ReadingPane from './components/ReadingPane'
 import ChatPanel from './components/ChatPanel'
 import SettingsSheet from './components/SettingsSheet'
 import ShortcutsSheet from './components/ShortcutsSheet'
+import ResizeHandle from './components/ResizeHandle'
 import Welcome from './components/Welcome'
 
 export interface View {
@@ -84,9 +88,11 @@ interface TopBarProps {
   onLayout: (l: Layout) => void
   onHelp: () => void
   searchRef: React.RefObject<HTMLInputElement | null>
+  sideCollapsed: boolean
+  onToggleSide: () => void
 }
 
-function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLayout, onHelp, searchRef }: TopBarProps) {
+function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLayout, onHelp, searchRef, sideCollapsed, onToggleSide }: TopBarProps) {
   const [draft, setDraft] = useState('')
   // Debounce typing so each keystroke doesn't hit SQLite.
   useEffect(() => {
@@ -96,10 +102,18 @@ function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLa
 
   return (
     <header
-      className="drag flex h-12 shrink-0 items-center gap-2 pl-[252px]"
-      // Leave room for the native window controls (Window Controls Overlay).
-      style={{ paddingRight: 'calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 150px)) + 10px)' }}
+      className="drag relative flex h-12 shrink-0 items-center gap-2 transition-[padding] duration-[360ms] ease-[var(--ease-soft)]"
+      // The search box starts after the sidebar; the right side leaves room for the native window controls (Window Controls Overlay).
+      style={{
+        paddingLeft: 'calc(var(--side) + 20px)',
+        paddingRight: 'calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 150px)) + 10px)'
+      }}
     >
+      <div className="absolute top-2 left-2.5">
+        <IconButton label={sideCollapsed ? 'Show sidebar' : 'Hide sidebar'} active={!sideCollapsed} onClick={onToggleSide}>
+          <SidebarSimpleIcon weight={sideCollapsed ? 'regular' : 'fill'} />
+        </IconButton>
+      </div>
       <label className="glass-side no-drag flex h-8 w-[min(460px,42vw)] items-center gap-2 rounded-[10px] px-3 text-muted focus-within:text-ink">
         <MagnifyingGlassIcon size={15} />
         <input
@@ -119,6 +133,9 @@ function TopBar({ onSearch, chatOpen, onToggleChat, onOpenSettings, layout, onLa
       </label>
       <div className="ml-auto flex gap-1.5">
         <LayoutSwitch layout={layout} onChange={onLayout} />
+        <IconButton label="Next background" onClick={cycleBackdrop}>
+          <ImageIcon />
+        </IconButton>
         <IconButton label="Keyboard shortcuts (?)" onClick={onHelp}>
           <KeyboardIcon />
         </IconButton>
@@ -147,6 +164,7 @@ export default function App() {
   const [filtersByView, setFiltersByView] = useState<Record<string, Filters>>(loadFilters)
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [helpOpen, setHelpOpen] = useState(false)
+  const { sideCollapsed } = usePanes()
   const searchRef = useRef<HTMLInputElement>(null)
   const rowIds = useRef<string[]>([])
   const filters = filtersByView[viewKey(view)] ?? {}
@@ -304,7 +322,7 @@ export default function App() {
   )
 
   const changeLayout = (l: Layout) => {
-    setLayout(l)
+    withTransition(() => setLayout(l))
     try {
       localStorage.setItem('layout', l)
     } catch {
@@ -314,7 +332,7 @@ export default function App() {
 
   const hasAccounts = (accounts.data?.length ?? 0) > 0
 
-  const list = (className?: string) => (
+  const list = (className: string) => (
     <MessageList
       view={view}
       filters={filters}
@@ -343,9 +361,11 @@ export default function App() {
         onLayout={changeLayout}
         onHelp={() => setHelpOpen(true)}
         searchRef={searchRef}
+        sideCollapsed={sideCollapsed}
+        onToggleSide={() => setSideCollapsed(!sideCollapsed)}
       />
 
-      <div className="flex min-h-0 flex-1 gap-2.5 px-2.5 pb-2.5">
+      <div className="flex min-h-0 flex-1 px-2.5 pb-2.5">
         <Sidebar
           view={view}
           onView={changeView}
@@ -354,12 +374,15 @@ export default function App() {
           progress={progress}
           configured={status.data?.configured}
           onAddAccount={addAccount}
+          collapsed={sideCollapsed}
         />
+        {sideCollapsed ? <div className="w-2.5 shrink-0" /> : <ResizeHandle pane="side" label="Resize sidebar" grow={1} />}
 
         {hasAccounts || accounts.isLoading ? (
           layout === 'columns' ? (
             <>
-              {list()}
+              {list('w-(--w-list) shrink-0')}
+              <ResizeHandle pane="list" label="Resize email list" grow={1} />
               <ReadingPane id={selectedId} onView={changeView} progress={progress} />
             </>
           ) : layout === 'split' ? (
@@ -376,14 +399,23 @@ export default function App() {
           <Welcome configured={status.data?.configured} onAdd={addAccount} />
         )}
 
-        {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+        {/* Always mounted, so the conversation survives hiding it; the width slides open and shut. */}
+        <div
+          inert={!chatOpen}
+          aria-hidden={!chatOpen}
+          className="flex shrink-0 overflow-hidden transition-[width,opacity] duration-[420ms] ease-[var(--ease-soft)] [view-transition-name:chat]"
+          style={{ width: chatOpen ? 'calc(var(--w-chat) + 10px)' : 0, opacity: chatOpen ? 1 : 0 }}
+        >
+          <ResizeHandle pane="chat" label="Resize assistant" grow={-1} />
+          <ChatPanel onClose={() => setChatOpen(false)} />
+        </div>
       </div>
 
       {settingsOpen && <SettingsSheet onClose={() => setSettingsOpen(false)} />}
       {helpOpen && <ShortcutsSheet onClose={() => setHelpOpen(false)} />}
 
       {notice && (
-        <div role="status" className="glass-solid enter fixed bottom-5 left-1/2 z-30 flex max-w-xl -translate-x-1/2 items-start gap-3 px-4 py-3">
+        <div role="status" className={`glass-solid fixed bottom-5 left-1/2 z-30 flex max-w-xl items-start gap-3 px-4 py-3 ${notice.autoHide ? 'toast-auto' : 'enter -translate-x-1/2'}`}>
           {notice.error && <WarningCircleIcon className="mt-px shrink-0 text-danger" />}
           <span className="selectable flex-1 text-[13px] leading-relaxed">{notice.text}</span>
           <button className="press text-muted hover:text-ink" onClick={() => setNotice(null)} aria-label="Dismiss">

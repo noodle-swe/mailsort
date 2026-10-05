@@ -5,7 +5,8 @@ import { createOllamaClassifier, type LlmClassifier } from './classify/llm'
 import { Tagger, type TaggingOptions } from './classify/pipeline'
 import { openDb } from './db'
 import { Emitter, type CoreListener } from './events'
-import { checkOllama, type OllamaHealth } from './ollama'
+import { checkOllama, isLocalUrl, isValidModelName, OllamaClient, OllamaError, PullTracker, type OllamaHealth, type PullProgress } from './ollama'
+import { findOllamaBinary, startOllamaProcess } from './ollama-local'
 import { createHttp } from './providers/http'
 import { GmailProvider } from './providers/gmail'
 import { OutlookProvider } from './providers/outlook'
@@ -57,6 +58,7 @@ export class Core {
   private writebackTimer: NodeJS.Timeout | null = null
   private writebackRunning: Promise<void> | null = null
   private writebackAgain = false
+  private readonly pulls = new Map<string, { controller: AbortController; progress: PullProgress }>()
   private readonly notifyMessages = throttleByKey(400, (accountId) => this.events.emit({ type: 'messages-changed', accountId }))
 
   constructor(private readonly opts: CoreOptions) {
@@ -94,6 +96,7 @@ export class Core {
 
   close(): void {
     for (const t of [this.syncTimer, this.maintenanceTimer, this.writebackTimer]) if (t) clearTimeout(t)
+    for (const p of this.pulls.values()) p.controller.abort()
     if (this.store.db.isOpen) this.store.db.close()
   }
 
@@ -275,9 +278,77 @@ export class Core {
     return n
   }
 
-  checkOllama(url?: string): Promise<OllamaHealth> {
+  /** Server reachable? Models pulled? And, for a server on this PC, whether Ollama is installed. */
+  async checkOllama(url?: string): Promise<OllamaHealth> {
     const s = this.store.getSettings()
-    return checkOllama(url ?? s.ollamaUrl, [s.chatModel, classifierModelOf(s)])
+    const health = await checkOllama(url ?? s.ollamaUrl, [s.chatModel, classifierModelOf(s)])
+    if (!health.local) return health
+    const binary = findOllamaBinary()
+    return { ...health, installed: health.reachable || !!binary, binary: binary ?? undefined }
+  }
+
+  /** Starts the Ollama server on this PC and waits until it answers. Returns its health. */
+  async startOllama(url?: string): Promise<OllamaHealth> {
+    const target = url ?? this.store.getSettings().ollamaUrl
+    if (!isLocalUrl(target)) throw new Error('MailSort can only start Ollama on this PC. The server address is another computer.')
+    const already = await this.checkOllama(target)
+    if (already.reachable) return already
+    const binary = findOllamaBinary()
+    if (!binary) throw new Error('Ollama is not installed on this PC. Download it from ollama.com/download.')
+    startOllamaProcess(binary)
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 500))
+      const health = await this.checkOllama(target)
+      if (health.reachable) return health
+    }
+    throw new Error('Ollama did not start. Try opening it from the Start menu.')
+  }
+
+  /**
+   * Downloads a model on the Ollama host in the background. Progress arrives as "ollama-pull" events
+   * and pullStatus(). Pulling a model that is already downloading does nothing.
+   */
+  pullModel(model: string, url?: string): void {
+    const name = model.trim()
+    if (!isValidModelName(name)) throw new Error(`"${model}" is not a valid model name. Use a name like qwen3:4b.`)
+    if (this.pulls.has(name) && !this.pulls.get(name)!.progress.done) return
+    const controller = new AbortController()
+    const progress: PullProgress = { model: name, status: 'Starting' }
+    this.pulls.set(name, { controller, progress })
+    const client = new OllamaClient(url ?? this.store.getSettings().ollamaUrl)
+    const tracker = new PullTracker()
+    let lastEmit = 0
+    const update = (patch: Partial<PullProgress>, force = false) => {
+      Object.assign(progress, patch)
+      const now = Date.now()
+      if (force || now - lastEmit >= 150) {
+        lastEmit = now
+        this.events.emit({ type: 'ollama-pull', ...progress })
+      }
+    }
+    void (async () => {
+      try {
+        update({}, true)
+        for await (const chunk of client.pullStream(name, controller.signal)) update(tracker.update(chunk))
+        update({ status: 'Done', done: true }, true)
+      } catch (err) {
+        const cancelled = err instanceof OllamaError && err.kind === 'aborted'
+        update({ status: cancelled ? 'Cancelled' : 'Failed', done: true, error: cancelled ? undefined : (err as Error).message }, true)
+      }
+      // Finished downloads stay listed for a minute so a reopened Settings sheet can still show the result.
+      setTimeout(() => {
+        if (this.pulls.get(name)?.progress === progress) this.pulls.delete(name)
+      }, 60_000).unref()
+    })()
+  }
+
+  cancelPull(model: string): void {
+    this.pulls.get(model.trim())?.controller.abort()
+  }
+
+  /** Downloads in progress or finished in the last minute. */
+  pullStatus(): PullProgress[] {
+    return [...this.pulls.values()].map((p) => ({ ...p.progress }))
   }
 
   // ---------------------------------------------------------------- write-back

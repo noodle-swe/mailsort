@@ -1,6 +1,6 @@
 // Types shared by the preload bridge and the renderer. Type-only: no runtime imports.
 import type { CoreEvent } from '../core/events'
-import type { OllamaHealth } from '../core/ollama'
+import type { OllamaHealth, PullProgress } from '../core/ollama'
 import type { Settings } from '../core/settings'
 import type { Tag } from '../core/tags'
 import type {
@@ -58,6 +58,10 @@ export interface MailApi {
   getSettings(): Promise<Settings>
   updateSettings(patch: Partial<Settings>): Promise<Settings>
   checkOllama(url?: string): Promise<OllamaHealth>
+  startOllama(url?: string): Promise<OllamaHealth>
+  pullModel(model: string, url?: string): Promise<void>
+  cancelPull(model: string): Promise<void>
+  pullStatus(): Promise<PullProgress[]>
   storageStats(): Promise<StorageStats>
   clearCache(): Promise<StorageStats>
   chat(turns: ChatTurn[]): Promise<string>

@@ -22,6 +22,7 @@
   --font-sans: 'Geist Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
   --ease-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
 :root {
@@ -35,8 +36,10 @@
   --primary: #1c2822;
   --on-primary: #f3f6f2;
   --danger: #a8443a;
-  --glass: rgb(249 250 248 / 0.8);
-  --glass-side: rgb(245 247 244 / 0.52);
+  --frost: 1;
+  --row-h: 84px;
+  --glass: rgb(249 250 248 / calc(0.8 * var(--frost)));
+  --glass-side: rgb(245 247 244 / calc(0.52 * var(--frost)));
   --glass-solid: rgb(249 250 248 / 0.95);
   --glass-ring: rgb(255 255 255 / 0.6);
   --panel-shadow: 0 1px 0 rgb(255 255 255 / 0.65) inset, 0 18px 40px -18px rgb(20 44 30 / 0.45);
@@ -56,8 +59,8 @@
     --primary: #e4ebe5;
     --on-primary: #121714;
     --danger: #e0857b;
-    --glass: rgb(15 19 17 / 0.78);
-    --glass-side: rgb(15 19 17 / 0.56);
+    --glass: rgb(15 19 17 / calc(0.78 * var(--frost)));
+    --glass-side: rgb(15 19 17 / calc(0.56 * var(--frost)));
     --glass-solid: rgb(17 21 19 / 0.96);
     --glass-ring: rgb(255 255 255 / 0.07);
     --panel-shadow: 0 1px 0 rgb(255 255 255 / 0.05) inset, 0 20px 44px -16px rgb(0 0 0 / 0.65);
@@ -81,7 +84,11 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
-  background: #33433a url('./assets/backdrop.webp') center / cover no-repeat fixed;
+  background: var(--photo-base, #33433a) var(--photo, url('./assets/backdrop.webp')) center / cover no-repeat fixed;
+}
+
+html[data-density='compact'] {
+  --row-h: 56px;
 }
 
 /* Theme-dependent dimming of the photo. */
@@ -101,7 +108,7 @@ body::before {
     --tint: var(--glass);
     background:
       linear-gradient(var(--tint), var(--tint)),
-      #33433a url('./assets/backdrop-blur.webp') center / cover no-repeat fixed;
+      var(--photo-base, #33433a) var(--photo-blur, url('./assets/backdrop-blur.webp')) center / cover no-repeat fixed;
     border-radius: 16px;
     box-shadow: var(--panel-shadow);
     outline: 1px solid var(--glass-ring);
@@ -130,7 +137,7 @@ body::before {
     transition:
       background-color 180ms var(--ease-soft),
       color 180ms var(--ease-soft),
-      transform 160ms var(--ease-soft),
+      transform 260ms var(--ease-spring),
       opacity 180ms var(--ease-soft);
   }
   .press:active:not(:disabled) {
@@ -186,10 +193,68 @@ select,
   .skeleton {
     animation: shimmer 1.4s ease-in-out infinite;
   }
+  .slide-in {
+    animation: slide-in 420ms var(--ease-soft) both;
+  }
+  .pop-in {
+    animation: pop-in 360ms var(--ease-spring) both;
+    animation-delay: var(--d, 0ms);
+  }
+  /* A toast that leaves by itself: in, hold, out. Its owner removes it when the animation ends. */
+  .toast-auto {
+    animation: toast-auto 3.5s var(--ease-soft) both;
+  }
+  /* Slow drift on the overview photo, so the screen is never quite still. */
+  .kenburns {
+    animation: kenburns 48s ease-in-out infinite alternate;
+    transform-origin: 60% 40%;
+  }
+  /* Views change with a cross-fade (View Transitions API); panels with a view-transition-name slide to their new place. */
+  ::view-transition-group(*) {
+    animation-duration: 460ms;
+    animation-timing-function: var(--ease-soft);
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 420ms;
+    animation-timing-function: var(--ease-soft);
+  }
   @keyframes enter {
     from {
       opacity: 0;
       transform: translateY(8px);
+    }
+  }
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(28px);
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.94);
+    }
+  }
+  @keyframes toast-auto {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, 12px);
+    }
+    8%,
+    88% {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, 6px);
+    }
+  }
+  @keyframes kenburns {
+    to {
+      transform: scale(1.08) translate(-1.2%, 1%);
     }
   }
   @keyframes fade {
@@ -208,6 +273,16 @@ select,
   .spin {
     animation: none;
   }
+  .toast-auto {
+    animation: none;
+  }
+}
+
+/* While a panel edge is being dragged, nothing may lag behind the pointer. */
+html[data-resizing],
+html[data-resizing] * {
+  transition: none !important;
+  cursor: col-resize !important;
 }
 
 ::-webkit-scrollbar {

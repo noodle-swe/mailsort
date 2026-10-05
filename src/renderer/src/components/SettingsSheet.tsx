@@ -1,34 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, GoogleLogoIcon, MicrosoftOutlookLogoIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
-import type { OllamaHealth } from '../../../core/ollama'
+import { GoogleLogoIcon, MicrosoftOutlookLogoIcon, XIcon } from '@phosphor-icons/react'
 import type { Settings } from '../../../core/settings'
 import { api } from '../lib/api'
 import { ago, bytes, cleanError } from '../lib/format'
-
-const inputCls = 'h-9 w-full rounded-[10px] bg-field px-3 text-[13px] outline-none placeholder:text-muted focus:bg-selected'
-const buttonCls = 'press h-9 shrink-0 rounded-[10px] bg-field px-3.5 text-[13px] font-medium hover:bg-selected disabled:opacity-50'
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-4">
-      <h3 className="text-[14px] font-semibold tracking-tight">{title}</h3>
-      {children}
-    </section>
-  )
-}
-
-function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-[13px] font-medium text-ink-soft">
-        {label}
-      </label>
-      {children}
-      {hint && <p className="text-xs leading-relaxed text-muted">{hint}</p>}
-    </div>
-  )
-}
+import { resetPanes } from '../lib/panes'
+import AppearanceSection from './AppearanceSection'
+import OllamaSection from './OllamaSection'
+import { buttonCls, Field, inputCls, Section } from './settings-ui'
 
 function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
   return (
@@ -50,8 +29,6 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   const storage = useQuery({ queryKey: ['storage'], queryFn: api.storageStats })
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
   const [form, setForm] = useState<Settings | null>(null)
-  const [health, setHealth] = useState<OllamaHealth | null>(null)
-  const [testing, setTesting] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
 
   useEffect(() => {
@@ -65,13 +42,6 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   }, [onClose])
 
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setForm((f) => (f ? { ...f, [k]: v } : f))
-
-  const test = async () => {
-    if (!form) return
-    setTesting(true)
-    setHealth(await api.checkOllama(form.ollamaUrl))
-    setTesting(false)
-  }
 
   const save = useMutation({
     mutationFn: (patch: Settings) => api.updateSettings(patch),
@@ -90,13 +60,12 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
     void qc.invalidateQueries({ queryKey: ['accounts'] })
   }
 
-  const modelNames = health?.models?.map((m) => m.name) ?? []
   const stdio = status.data?.stdioCommand
   const stdioJson = stdio ? JSON.stringify({ mcpServers: { mailsort: stdio } }, null, 2) : ''
 
   return (
-    <div className="fixed inset-0 z-20 flex justify-end bg-black/25" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal aria-label="Settings" className="glass-solid enter m-2.5 flex w-[440px] flex-col overflow-hidden">
+    <div className="fade fixed inset-0 z-20 flex justify-end bg-black/25" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal aria-label="Settings" className="glass-solid slide-in m-2.5 flex w-[440px] max-w-full flex-col overflow-hidden">
         <header className="flex items-center justify-between px-6 pt-5 pb-3">
           <h2 className="text-[17px] font-semibold tracking-tight">Settings</h2>
           <button onClick={onClose} className="press rounded-[8px] p-1 text-muted hover:bg-hover hover:text-ink" aria-label="Close settings">
@@ -112,45 +81,9 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
           </div>
         ) : (
           <div className="flex flex-col gap-9 overflow-y-auto px-6 pt-2 pb-6">
-            <Section title="Ollama">
-              <Field label="Server address" htmlFor="ollama-url" hint="The PC with the graphics card, for example http://192.168.1.50:11434">
-                <div className="flex gap-2">
-                  <input id="ollama-url" className={inputCls} value={form.ollamaUrl} onChange={(e) => set('ollamaUrl', e.target.value)} />
-                  <button onClick={() => void test()} disabled={testing} className={buttonCls}>
-                    {testing ? 'Testing' : 'Test'}
-                  </button>
-                </div>
-              </Field>
-              {health && (
-                <p className={`selectable flex gap-2 rounded-[10px] bg-field px-3 py-2.5 text-[13px] leading-relaxed ${health.ok ? '' : 'text-danger'}`}>
-                  {health.ok ? <CheckIcon size={15} className="mt-0.5 shrink-0" /> : <WarningCircleIcon size={15} className="mt-0.5 shrink-0" />}
-                  <span>
-                    {health.error
-                      ? health.error
-                      : `Connected to Ollama ${health.version}, ${health.models?.length ?? 0} models available.` +
-                        (health.missing?.length ? ` Missing ${health.missing.join(', ')}. Run "ollama pull ${health.missing[0]}" on that PC.` : '')}
-                  </span>
-                </p>
-              )}
-              <datalist id="models">
-                {modelNames.map((n) => (
-                  <option key={n} value={n} />
-                ))}
-              </datalist>
-              <Field label="Chat model" htmlFor="chat-model" hint="Needs tool calling, such as qwen2.5:7b or llama3.1:8b.">
-                <input id="chat-model" className={inputCls} list="models" value={form.chatModel} onChange={(e) => set('chatModel', e.target.value)} />
-              </Field>
-              <Field label="Tagging model" htmlFor="tag-model" hint="Leave empty to use the chat model, so the GPU never swaps models.">
-                <input id="tag-model" className={inputCls} list="models" placeholder="Same as chat model" value={form.classifierModel} onChange={(e) => set('classifierModel', e.target.value)} />
-              </Field>
-              <Field
-                label="Parallel requests"
-                htmlFor="parallel"
-                hint="0 is Auto: MailSort measures the speed and picks. A fixed number should match OLLAMA_NUM_PARALLEL on the Ollama PC."
-              >
-                <input id="parallel" className={`${inputCls} w-24`} type="number" min={0} max={16} value={form.llmConcurrency} onChange={(e) => set('llmConcurrency', Number(e.target.value))} />
-              </Field>
-            </Section>
+            <AppearanceSection onResetLayout={resetPanes} />
+
+            <OllamaSection form={form} set={set} />
 
             <Section title="Tagging">
               <Toggle checked={form.autoTag} onChange={(v) => set('autoTag', v)}>

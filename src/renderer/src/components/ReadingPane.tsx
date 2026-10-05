@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, ArrowUpRightIcon, CaretDownIcon, EnvelopeSimpleIcon, EnvelopeSimpleOpenIcon, ImageIcon, SparkleIcon } from '@phosphor-icons/react'
+import { ArrowLeftIcon, ArrowUpRightIcon, CaretDownIcon, EnvelopeSimpleIcon, EnvelopeSimpleOpenIcon, GoogleLogoIcon, ImageIcon, MicrosoftOutlookLogoIcon, SparkleIcon } from '@phosphor-icons/react'
 import { dateRange, DATE_PRESET_LABEL } from '../../../core/dates'
 import { ACTION_TAGS, TAGS, TAG_INFO, type Tag } from '../../../core/tags'
 import type { TaggingProgress } from '../../../core/types'
@@ -8,8 +8,10 @@ import { api } from '../lib/api'
 import { escapeHtml, fullDate, greeting } from '../lib/format'
 import type { Filters } from '../lib/filters'
 import type { View } from '../App'
-import backdrop from '../assets/backdrop.webp'
+import { useAppearance } from '../lib/appearance'
+import { backdropById } from '../lib/backdrops'
 import Avatar from './Avatar'
+import CountUp from './CountUp'
 import { TagSwatch } from './TagChip'
 
 /**
@@ -49,7 +51,7 @@ function Digest({ onView }: { onView: OpenView }) {
           title={n ? `Show ${tag} from ${DATE_PRESET_LABEL[period].toLowerCase()}` : undefined}
           className={`press w-full rounded-[7px] px-2 py-1 text-right tabular-nums ${n ? 'font-medium hover:bg-hover' : 'text-muted/60'}`}
         >
-          {n}
+          <CountUp value={n} />
         </button>
       </td>
     )
@@ -74,15 +76,21 @@ function Digest({ onView }: { onView: OpenView }) {
         </div>
       </div>
       <div className="overflow-x-auto rounded-[12px] bg-field p-1.5">
-        <table className="w-full min-w-[420px] text-[13px]">
+        <table className="w-full min-w-[440px] table-fixed text-[13px]">
+          <colgroup>
+            <col />
+            {DIGEST_TAGS.map((t) => (
+              <col key={t} className="w-[64px]" />
+            ))}
+          </colgroup>
           <thead>
             <tr className="text-xs text-muted">
               <th scope="col" className="px-2 pt-1 pb-1.5 text-left font-medium">
                 Inbox
               </th>
               {DIGEST_TAGS.map((t) => (
-                <th key={t} scope="col" className="px-2 pt-1 pb-1.5 text-right font-medium">
-                  <span className="inline-flex items-center gap-1.5">
+                <th key={t} scope="col" className="px-1 pt-1 pb-1.5 text-right text-[10.5px] font-medium whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1">
                     <TagSwatch tag={t} />
                     {DIGEST_HEADING[t] ?? t}
                   </span>
@@ -93,15 +101,18 @@ function Digest({ onView }: { onView: OpenView }) {
           <tbody>
             {inboxes.map((a) => (
               <tr key={a.id} className="border-t border-line">
-                <th scope="row" className="max-w-[180px] truncate px-2 py-1 text-left font-normal" title={a.email}>
-                  {a.email}
+                <th scope="row" className="px-2 py-1 text-left font-normal" title={a.email}>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    {a.provider === 'gmail' ? <GoogleLogoIcon size={12} className="shrink-0" /> : <MicrosoftOutlookLogoIcon size={12} className="shrink-0" />}
+                    <span className="truncate">{a.email.split('@')[0]}</span>
+                  </span>
                 </th>
                 {DIGEST_TAGS.map((t) => cell(a.id, t))}
               </tr>
             ))}
             {inboxes.length > 1 && (
               <tr className="border-t border-line">
-                <th scope="row" className="px-2 py-1 text-left font-medium">
+                <th scope="row" className="px-2 py-1 text-left font-medium whitespace-nowrap">
                   All inboxes
                 </th>
                 {DIGEST_TAGS.map((t) => cell(null, t))}
@@ -115,13 +126,14 @@ function Digest({ onView }: { onView: OpenView }) {
 }
 
 function Overview({ onView, progress }: { onView: OpenView; progress: TaggingProgress | null }) {
+  const photo = backdropById(useAppearance().backdrop)
   const counts = useQuery({ queryKey: ['counts', null], queryFn: () => api.tagCounts() })
   const needAction = ACTION_TAGS.reduce((n, t) => n + (counts.data?.[t] ?? 0), 0)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
       <div className="relative h-[44%] min-h-[220px] shrink-0 overflow-hidden rounded-[12px]">
-        <img src={backdrop} alt="Green highland ridge under low cloud, with a narrow road winding below" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+        <img src={photo.photo} alt={photo.alt} className="kenburns absolute inset-0 h-full w-full object-cover" draggable={false} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
         <div className="enter absolute right-0 bottom-0 left-0 p-6 text-white">
           <p className="text-[13px] text-white/80">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</p>
@@ -138,15 +150,17 @@ function Overview({ onView, progress }: { onView: OpenView; progress: TaggingPro
 
       <section className="enter px-3" style={{ ['--d' as string]: '80ms' }}>
         <h3 className="mb-2.5 text-[13px] font-medium text-ink-soft">Needs your attention</h3>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(136px,1fr))]">
           {ACTION_TAGS.map((t) => (
             <button
               key={t}
               onClick={() => onView({ tag: t })}
-              className="press flex flex-col items-start gap-1.5 rounded-[12px] bg-field px-3.5 py-3 text-left hover:bg-selected"
+              className="press flex flex-col items-start gap-1.5 rounded-[12px] bg-field px-3.5 py-3 text-left hover:-translate-y-0.5 hover:bg-selected"
             >
               {/* Count first so the numbers line up even when a label wraps. */}
-              <span className="text-[26px] leading-none font-semibold tracking-tight tabular-nums">{counts.data?.[t] ?? 0}</span>
+              <span className="text-[26px] leading-none font-semibold tracking-tight">
+                <CountUp value={counts.data?.[t] ?? 0} />
+              </span>
               <span className="mt-1 flex items-center gap-2 text-[13px] leading-tight font-medium">
                 <TagSwatch tag={t} />
                 {t}
@@ -217,7 +231,7 @@ export default function ReadingPane({ id, onView, progress, onBack }: { id: stri
   const provider = m?.accountId.startsWith('gmail') ? 'Gmail' : 'Outlook'
 
   return (
-    <main className="glass fade flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2.5" style={{ ['--d' as string]: '120ms' }}>
+    <main className="glass fade flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2.5 [view-transition-name:reader]" style={{ ['--d' as string]: '120ms' }}>
       {!id ? (
         <Overview onView={onView} progress={progress} />
       ) : !m ? (

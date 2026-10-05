@@ -107,7 +107,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <aside aria-label="Assistant" className="glass fade flex w-[340px] shrink-0 flex-col overflow-hidden" style={{ ['--d' as string]: '180ms' }}>
+    <aside aria-label="Assistant" className="glass flex h-full w-(--w-chat) shrink-0 flex-col overflow-hidden">
       <header className="flex items-start justify-between px-4 pt-4 pb-3">
         <div>
           <h2 className="text-[15px] font-semibold tracking-tight">Assistant</h2>

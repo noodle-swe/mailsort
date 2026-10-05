@@ -1,3 +1,4 @@
+import type { PullProgress } from './ollama'
 import type { TaggingProgress } from './types'
 
 export type CoreEvent =
@@ -8,6 +9,7 @@ export type CoreEvent =
   | { type: 'accounts-changed' }
   | { type: 'writeback'; ok: number; failed: number; error?: string }
   | { type: 'read-sync-failed'; accountId: string; error: string }
+  | ({ type: 'ollama-pull' } & PullProgress)
 
 export type CoreListener = (event: CoreEvent) => void
 

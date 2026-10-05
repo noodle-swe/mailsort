@@ -16,13 +16,12 @@ import type { Account, MessageSummary } from '../../../core/types'
 import { api } from '../lib/api'
 import { activeCount, describeFilters, filtersToQuery, type Filters } from '../lib/filters'
 import { shortDate } from '../lib/format'
+import { ROW_HEIGHT, useAppearance } from '../lib/appearance'
 import type { View } from '../App'
 import Avatar from './Avatar'
 import BulkBar from './BulkBar'
 import FilterBar from './FilterBar'
 import TagChip from './TagChip'
-
-const ROW_HEIGHT = 84
 
 interface Props {
   view: View
@@ -128,8 +127,11 @@ export default function MessageList({
   onRows,
   onSetRead,
   onSetTag,
-  className = 'w-[372px] shrink-0'
+  className = 'w-(--w-list) shrink-0'
 }: Props) {
+  const { density } = useAppearance()
+  const compact = density === 'compact'
+  const rowH = ROW_HEIGHT[density]
   const query = useInfiniteQuery({
     queryKey: ['messages', view, filters, search],
     queryFn: ({ pageParam }) =>
@@ -146,9 +148,11 @@ export default function MessageList({
   const virtualizer = useVirtualizer({
     count: rows.length + (query.hasNextPage ? 1 : 0),
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowH,
     overscan: 10
   })
+  // A new density changes every row's height.
+  useEffect(() => virtualizer.measure(), [rowH, virtualizer])
   const items = virtualizer.getVirtualItems()
 
   // Keyboard moves (j/k, arrows) change selectedId from outside; keep the row in view.
@@ -190,6 +194,7 @@ export default function MessageList({
     onChecked(next)
   }
 
+  const selectedIndex = rows.findIndex((r) => r.id === selectedId)
   const unreadShown = rows.filter((r) => !r.isRead).length
   // With several accounts in the unified view, each row says which mailbox it came from.
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts])
@@ -199,7 +204,7 @@ export default function MessageList({
   const described = describeFilters(filters)
 
   return (
-    <section aria-label="Emails" className={`glass fade flex min-h-0 min-w-0 flex-col overflow-hidden ${className}`} style={{ ['--d' as string]: '60ms' }}>
+    <section aria-label="Emails" className={`glass fade flex min-h-0 min-w-0 flex-col overflow-hidden [view-transition-name:list] ${className}`} style={{ ['--d' as string]: '60ms' }}>
       <header className="flex items-end justify-between gap-3 px-4 pt-4 pb-3">
         <div className="min-w-0">
           <h1 className="truncate text-[17px] font-semibold tracking-tight">{search ? `Results for "${search}"` : viewTitle(view, accounts)}</h1>
@@ -236,6 +241,11 @@ export default function MessageList({
           </div>
         )}
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 rounded-[10px] bg-selected transition-[transform,opacity] duration-[380ms] ease-[var(--ease-soft)]"
+            style={{ height: 'calc(var(--row-h) - 4px)', transform: `translateY(${Math.max(0, selectedIndex) * rowH}px)`, opacity: selectedIndex >= 0 ? 1 : 0 }}
+          />
           {items.map((vi) => {
             const m = rows[vi.index]
             const selected = m?.id === selectedId
@@ -243,7 +253,10 @@ export default function MessageList({
             return (
               <div key={m?.id ?? 'loader'} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: vi.size, transform: `translateY(${vi.start}px)` }}>
                 {m ? (
-                  <div className="group relative h-[80px]">
+                  <div
+                    className={`group relative h-[calc(var(--row-h)-4px)] ${vi.index < 12 ? 'enter' : ''}`}
+                    style={vi.index < 12 ? { ['--d' as string]: `${vi.index * 24}ms` } : undefined}
+                  >
                     <button
                       data-row
                       onClick={(e) => {
@@ -254,9 +267,9 @@ export default function MessageList({
                         }
                       }}
                       aria-current={selected ? 'true' : undefined}
-                      className={`press flex h-[80px] w-full gap-3 rounded-[10px] px-2.5 py-2.5 text-left ${selected || isChecked ? 'bg-selected' : 'hover:bg-hover'}`}
+                      className={`press flex h-[calc(var(--row-h)-4px)] w-full gap-3 rounded-[10px] px-2.5 text-left ${compact ? 'items-center py-1.5' : 'py-2.5'} ${isChecked ? 'bg-selected' : selected ? '' : 'hover:bg-hover'}`}
                     >
-                      <Avatar name={m.fromName} addr={m.fromAddr} />
+                      <Avatar name={m.fromName} addr={m.fromAddr} size={compact ? 28 : 32} />
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <div className="flex items-center gap-2">
                           <span className={`truncate text-[13px] ${m.isRead ? 'text-ink-soft' : 'font-semibold text-ink'}`}>{m.fromName || m.fromAddr || 'Unknown sender'}</span>
@@ -272,7 +285,7 @@ export default function MessageList({
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-muted">
+                        <div className={`items-center gap-1.5 text-xs text-muted ${compact ? 'hidden' : 'flex'}`}>
                           {showAccount && accountById.get(m.accountId) && <AccountMark account={accountById.get(m.accountId)!} />}
                           <span className="truncate">{m.snippet}</span>
                         </div>
@@ -283,10 +296,14 @@ export default function MessageList({
                       aria-checked={isChecked}
                       aria-label={`Select email from ${m.fromName || m.fromAddr || 'unknown sender'}`}
                       onClick={(e) => toggleChecked(m.id, e.shiftKey)}
-                      className={`press absolute top-2.5 left-2.5 grid h-8 w-8 place-items-center rounded-[9px] shadow-[inset_0_0_0_1.5px_var(--muted)] focus-visible:opacity-100 ${isChecked ? 'bg-primary text-on-primary opacity-100 shadow-none' : anyChecked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                      style={isChecked ? undefined : { background: 'var(--glass-solid)' }}
+                      className={`press absolute ${compact ? 'top-1.5' : 'top-2.5'} left-2.5 grid ${compact ? 'h-7 w-7' : 'h-8 w-8'} place-items-center rounded-[9px] focus-visible:opacity-100 ${isChecked || anyChecked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                      style={{ background: 'color-mix(in srgb, var(--glass-solid) 92%, transparent)' }}
                     >
-                      {isChecked && <CheckIcon size={15} weight="bold" />}
+                      <span
+                        className={`grid h-[18px] w-[18px] place-items-center rounded-[6px] transition-colors duration-200 ${isChecked ? 'bg-primary text-on-primary' : 'shadow-[inset_0_0_0_1.5px_var(--muted)]'}`}
+                      >
+                        {isChecked && <CheckIcon size={12} weight="bold" />}
+                      </span>
                     </button>
                     <RowActions m={m} onSetRead={onSetRead} onSetTag={onSetTag} />
                   </div>

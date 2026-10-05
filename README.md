@@ -75,14 +75,16 @@ The chat model never reads hundreds of emails itself. It calls the `tag_emails` 
 
 The UI follows the [Taste Skill](https://www.tasteskill.dev/) redesign rules (installed in `.claude/skills/`), applied to an app rather than a landing page:
 
-- **Backdrop photo:** the photo fills the whole frameless window. Panels look frosted using a tiny pre-blurred copy of the photo (2 KB), so there is no live blur cost on machines without a GPU.
+- **Backdrop photo:** the photo fills the whole frameless window. Panels look frosted using a tiny pre-blurred copy of the photo (about 1 KB each), so there is no live blur cost on machines without a GPU. Seven photos ship with the app; pick one in **Settings, Appearance**, or press the picture button in the top bar to cycle. The window cross-fades to the new photo, and the overview follows it.
+- **Flexible layout:** drag the gaps between panels to resize the sidebar, the email list and the assistant (arrow keys work too, double-click resets). The sidebar collapses to an icon rail, the assistant slides away without losing the conversation, and the layout button switches between columns, split and a single pane. Sizes are remembered. **Appearance** also sets panel transparency and a compact email list.
+- **Motion:** panels slide to their new size, the selection pill glides between emails, new rows rise in one after another, numbers count up, and layout changes morph through the View Transitions API. All of it switches off under the system "reduce motion" setting.
 - **Fonts and icons:** Geist (bundled, works offline) and Phosphor icons.
 - **Color:** one green-tinted neutral palette with an ink primary, so the tag colors are the only hues.
 - **Shape:** one corner-radius scale: panels 16px, controls 10px, chips 7px.
 - **States:** loading skeletons, a photo overview when no email is open, inline errors, and Settings as a slide-over panel.
 - **Light and dark:** both themes follow Windows. Motion respects "reduce motion".
 
-Backdrop photo: [Andrew Ridley on Unsplash](https://unsplash.com/photos/Kt5hRENuotI) (Unsplash License).
+Photos, all under the Unsplash License: [Andrew Ridley](https://unsplash.com/photos/Kt5hRENuotI) (Highland), Paul Jarvis ([Mist](https://unsplash.com/photos/Cm7oKel-X2Q), [Coast](https://unsplash.com/photos/6J--NXulQCs), [Falls](https://unsplash.com/photos/NYDo21ssGao)), [Go Wild](https://unsplash.com/photos/V0yAek6BgGk) (Alps), [Daniel Genser](https://unsplash.com/photos/PzPbh-faPgU) (Golden hour) and [Julie Geiger](https://unsplash.com/photos/dYshDcTI1Js) (Dusk).
 
 To regenerate the screenshots without opening a window: build, seed a demo folder, then run the app in capture mode:
 

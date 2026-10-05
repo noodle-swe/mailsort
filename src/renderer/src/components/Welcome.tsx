@@ -1,14 +1,16 @@
 import { GoogleLogoIcon, MicrosoftOutlookLogoIcon } from '@phosphor-icons/react'
 import type { Provider } from '../../../core/types'
-import backdrop from '../assets/backdrop.webp'
+import { useAppearance } from '../lib/appearance'
+import { backdropById } from '../lib/backdrops'
 
 /** First-run screen: shown until an account is connected. */
 export default function Welcome({ configured, onAdd }: { configured?: Record<Provider, boolean>; onAdd: (p: Provider) => void }) {
+  const photo = backdropById(useAppearance().backdrop)
   const missing = configured ? (['gmail', 'outlook'] as const).filter((p) => !configured[p]) : []
   return (
     <main className="glass fade flex min-w-0 flex-1 p-2.5">
       <div className="relative flex flex-1 items-end overflow-hidden rounded-[12px]">
-        <img src={backdrop} alt="Green highland ridge under low cloud, with a narrow road winding below" className="absolute inset-0 h-full w-full object-cover" draggable={false} />
+        <img src={photo.photo} alt={photo.alt} className="kenburns absolute inset-0 h-full w-full object-cover" draggable={false} />
         <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-black/25 to-transparent" />
         <div className="enter relative max-w-xl p-10 text-white">
           <h1 className="text-[34px] leading-[1.1] font-semibold tracking-tight">Connect your inbox</h1>

@@ -25,6 +25,8 @@ interface Props {
   progress: TaggingProgress | null
   configured?: Record<Provider, boolean>
   onAddAccount: (p: Provider) => void
+  /** Narrow icon rail instead of the full sidebar. */
+  collapsed: boolean
 }
 
 function NavRow({
@@ -34,7 +36,8 @@ function NavRow({
   children,
   count,
   title,
-  trailing
+  trailing,
+  badge
 }: {
   active: boolean
   onClick: () => void
@@ -43,18 +46,26 @@ function NavRow({
   count?: number
   title?: string
   trailing?: ReactNode
+  /** In the collapsed rail, show a dot on the icon when there is something to read. */
+  badge?: boolean
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
-      className={`press flex h-8 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left text-[13px] ${active ? 'bg-selected font-medium text-ink' : 'text-ink-soft hover:bg-hover hover:text-ink'}`}
+      aria-label={typeof children === 'string' ? children : undefined}
+      className={`press flex h-8 w-full items-center gap-2.5 rounded-[10px] px-2.5 text-left text-[13px] group-data-[compact=true]/side:justify-center group-data-[compact=true]/side:gap-0 ${active ? 'bg-selected font-medium text-ink' : 'text-ink-soft hover:bg-hover hover:text-ink'}`}
     >
-      <span className="grid w-4 shrink-0 place-items-center">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {trailing}
-      {!!count && <span className="text-xs text-muted tabular-nums">{count}</span>}
+      <span className="relative grid w-4 shrink-0 place-items-center">
+        {icon}
+        {badge && !!count && <span className="absolute -top-1 -right-1.5 hidden h-2 w-2 rounded-full bg-primary group-data-[compact=true]/side:block" aria-hidden />}
+      </span>
+      <span className="min-w-0 flex-1 truncate transition-opacity duration-200 group-data-[compact=true]/side:hidden">{children}</span>
+      <span className="flex items-center gap-2 group-data-[compact=true]/side:hidden">
+        {trailing}
+        {!!count && <span className="text-xs text-muted tabular-nums">{count}</span>}
+      </span>
     </button>
   )
 }
@@ -64,6 +75,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 export default function Sidebar(p: Props) {
+  const collapsed = p.collapsed
   const counts = useQuery({ queryKey: ['counts', p.view.accountId ?? null], queryFn: () => api.tagCounts(p.view.accountId) })
   const unread = useQuery({ queryKey: ['unread'], queryFn: api.unreadCounts })
   const totalUnread = Object.values(unread.data ?? {}).reduce((a, b) => a + b, 0)
@@ -72,16 +84,21 @@ export default function Sidebar(p: Props) {
   const pct = p.progress ? p.progress.done / Math.max(1, p.progress.total) : 0
 
   return (
-    <aside className="glass-side fade flex w-[232px] shrink-0 flex-col gap-5 overflow-y-auto px-2 pt-3.5 pb-2.5">
-      <div className="flex items-center gap-2 px-2.5">
-        <span className="grid h-7 w-7 place-items-center rounded-[8px] bg-primary text-on-primary">
+    <aside
+      data-compact={collapsed}
+      aria-label="Sidebar"
+      className="glass-side fade group/side flex shrink-0 flex-col gap-5 overflow-x-hidden overflow-y-auto px-2 pt-3.5 pb-2.5 transition-[width] duration-[360ms] ease-[var(--ease-soft)] [view-transition-name:side]"
+      style={{ width: 'var(--side)' }}
+    >
+      <div className="flex items-center gap-2 px-2.5 group-data-[compact=true]/side:justify-center group-data-[compact=true]/side:px-0">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-[8px] bg-primary text-on-primary">
           <EnvelopeSimpleIcon size={16} weight="bold" />
         </span>
-        <span className="text-[15px] font-semibold tracking-tight">MailSort</span>
+        <span className="text-[15px] font-semibold tracking-tight group-data-[compact=true]/side:hidden">MailSort</span>
       </div>
 
       <nav aria-label="Mailboxes" className="flex flex-col gap-0.5">
-        <NavRow active={isAll} onClick={() => p.onView({})} icon={<TrayIcon />} count={totalUnread}>
+        <NavRow active={isAll} onClick={() => p.onView({})} icon={<TrayIcon />} count={totalUnread} badge>
           All inboxes
         </NavRow>
         {p.accounts.map((a) => (
@@ -91,6 +108,7 @@ export default function Sidebar(p: Props) {
             onClick={() => p.onView({ accountId: a.id })}
             icon={a.provider === 'gmail' ? <GoogleLogoIcon /> : <MicrosoftOutlookLogoIcon />}
             count={unread.data?.[a.id]}
+            badge
             title={`${a.email}\nLast sync: ${ago(a.lastSyncAt)}${a.lastError ? `\nProblem: ${a.lastError}` : ''}`}
             trailing={
               p.syncing[a.id] ? (
@@ -106,7 +124,10 @@ export default function Sidebar(p: Props) {
       </nav>
 
       <nav aria-label="Tags" className="flex flex-col gap-0.5">
-        <SectionLabel>Tags</SectionLabel>
+        <div className="group-data-[compact=true]/side:hidden">
+          <SectionLabel>Tags</SectionLabel>
+        </div>
+        <div className="mx-2 hidden h-px bg-line group-data-[compact=true]/side:block" aria-hidden />
         {[...TAGS, 'Untagged' as const].map((t) => (
           <NavRow
             key={t}
@@ -125,10 +146,12 @@ export default function Sidebar(p: Props) {
           <button
             onClick={() => void api.runTagging({}).catch(() => undefined)}
             disabled={!!p.progress}
-            className="press flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-primary px-3 text-[13px] font-medium text-on-primary hover:opacity-90 disabled:opacity-80"
+            className="press flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-primary px-3 text-[13px] font-medium text-on-primary hover:opacity-90 disabled:opacity-80 group-data-[compact=true]/side:px-0"
+            title={p.progress ? `Tagging ${p.progress.done} of ${p.progress.total}` : 'Tag new emails'}
+            aria-label={p.progress ? `Tagging ${p.progress.done} of ${p.progress.total}` : 'Tag new emails'}
           >
-            <SparkleIcon size={15} weight="fill" />
-            {p.progress ? `Tagging ${p.progress.done} of ${p.progress.total}` : 'Tag new emails'}
+            <SparkleIcon size={15} weight="fill" className="shrink-0" />
+            <span className="truncate group-data-[compact=true]/side:hidden">{p.progress ? `Tagging ${p.progress.done} of ${p.progress.total}` : 'Tag new emails'}</span>
           </button>
           <div className="mt-1.5 h-[3px] overflow-hidden rounded-full" aria-hidden>
             {p.progress && (
@@ -139,7 +162,7 @@ export default function Sidebar(p: Props) {
             )}
           </div>
           {!p.progress && untagged > 0 && (
-            <div className="-mt-0.5 text-center text-[11px] text-muted">{untagged} waiting to be tagged</div>
+            <div className="-mt-0.5 text-center text-[11px] text-muted group-data-[compact=true]/side:hidden">{untagged} waiting to be tagged</div>
           )}
         </div>
 

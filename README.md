@@ -20,6 +20,13 @@ Type **"tag the emails"** in the Assistant panel, or click **Tag new emails**, a
 
 Tags are also saved to the mailbox as Gmail labels and Outlook categories (`AI/Meeting`, …), so you see them on your phone too.
 
+**When mail gets tagged.** The button always works, and shows what it is doing: "Starting", then "Tagging 12 of 132" with a bar, a note while Ollama loads the model, and a line at the end that says how many were tagged or what went wrong (the line stays until you dismiss it). New mail is also tagged as it arrives, with two safeguards for laptops:
+
+- If Ollama runs on the same PC as MailSort, automatic tagging stays off until you turn it on in **Settings, Tagging** (loading a model next to the app can slow a laptop to a crawl). With Ollama on another PC it is on.
+- It tags at most 50 new emails per sync, newest first; the rest wait for the button. If Ollama fails twice in a row it pauses for 30 minutes and tells you why. A dropped connection is retried twice before a run stops.
+
+Updating the app keeps the tags you already have. Only **Re-tag all emails** in Settings recomputes them.
+
 **First-time setup** (Google/Microsoft app IDs, Ollama on your GPU PC): see [docs/SETUP.md](docs/SETUP.md).
 
 ## Several accounts
@@ -119,6 +126,17 @@ Tools: `list_accounts`, `sync_mail`, `search_emails`, `get_email`, `tag_emails` 
 | `npx tsx scripts/seed-demo.ts <dir>` | Fill a throwaway data folder with sample emails; run with `MAILSORT_DATA_DIR=<dir>` to try the UI without an account |
 | `npm run typecheck` | TypeScript checks |
 | `npm run dist` | Build a Windows installer (`dist/`) |
+
+## Log file
+
+MailSort writes a log of what went wrong to `%APPDATA%\MailSort\logs\mailsort.log` (older ones become `mailsort.1.log` to `mailsort.3.log`, about 1 MB each). It records:
+
+- the PC and app (Windows version, memory, graphics adapters, Ollama address and models) at start
+- sync, tagging and tag write-back problems, with counts, the model, and the kind of Ollama failure (`unreachable`, `dropped`, `model_missing`, ...)
+- what Ollama had loaded and how much memory was free after a tagging problem
+- uncaught errors, crashed or frozen windows, graphics-process crashes, and the computer going to sleep or waking up
+
+It never records the subject, sender or text of an email. Mailbox addresses are masked (`***@gmail.com`) and tokens are hidden. To send it for help, open **Settings, Troubleshooting** and click **Copy recent log** (the last 200 lines), or **Open log folder**.
 
 ## Privacy
 

@@ -53,11 +53,54 @@ const APPLIED_RE =
 const NEEDS_ATTENTION_RE =
   /(complete your application|finish (your|the) application|continue your application|application (is )?(incomplete|not (yet )?complete)|(haven'?t|have not|did not|didn'?t) (finish|complete)(d)? (your|the) application|missing (required )?(information|documents?)|complete the (assessment|questionnaire|application form))/
 
+/** An email that delivers a code to type in. These are Junk even when a job site sends one while you apply. */
+const CODE_RE =
+  /(verification code|security code|confirmation code|authentication code|one[- ]time (pass(word|code)|code)|\botp\b|your (login|sign[- ]in|access) code|activation code|\bpasscode\b)/
+
 const OTP_RE =
   /(verification code|verify your (email|account|identity)|confirm your email( address)?|security code|one[- ]time (pass(word|code)|code)|\botp\b|your (login|sign[- ]in|access) code|password reset|reset your password|two[- ]factor|\b2fa\b|api key|access key|activation code|magic link|sign[- ]in link|new sign[- ]in|login attempt)/
 
 const MEETING_WORDS_RE =
   /\b(interview|schedule|scheduling|availability|available times?|book a (time|slot)|pick a time|chat|call|meet|phone screen|screening|video call|time slot|invitation)\b/
+
+/**
+ * A direct invitation to book time with the sender: "we would like to schedule", "use the scheduling link",
+ * "select a time that works". It must stay narrow: Applied confirmations often say "we will contact you to
+ * schedule an interview", which is a promise, not an invitation, and matches none of these.
+ */
+const MEETING_INVITE_RE = new RegExp(
+  [
+    String.raw`\b(?:we|i)(?:'d| would) (?:like|love) to (?:schedule|set up|arrange|book|invite you|speak with you|talk with you|chat with you|connect with you|meet with you)`,
+    String.raw`\bscheduling link\b`,
+    String.raw`\b(?:pick|select|choose|book|schedule) (?:a|an|your|the) (?:convenient |suitable |good )?(?:time|slot)\b`,
+    String.raw`\byou(?:'re| are) invited to (?:an? )?(?:\w+ )?(?:screen|interview|call|chat|conversation)\b`
+  ].join('|'),
+  'g'
+)
+
+/** In a subject, "Interview invitation" is an invitation. In the body the noun is usually a promise ("you will receive an invitation"). */
+const MEETING_INVITE_SUBJECT_RE = /\b(?:interview invitation|invitation (?:to|for) (?:an? )?(?:\w+ )?(?:screen|interview|call|chat))\b/
+
+/** The start of a sentence that promises a later step: "if you are selected, you will receive a link to schedule a time". */
+const PROMISE_RE = new RegExp(
+  [
+    String.raw`\bwill (?:receive|be (?:sent|invited|asked|contacted))\b`,
+    String.raw`\bwe(?:'ll| will) (?:send|reach out|contact|be in touch|get in touch|follow up)\b`,
+    String.raw`\b(?:may|might|could) (?:receive|be (?:invited|asked|contacted))\b`,
+    String.raw`\bif (?:you|your)\b[^.!?\n]{0,80}\b(?:selected|match(?:es)?|move forward|moving forward|qualif\w*|good fit|a fit)\b`
+  ].join('|')
+)
+
+/** Whether the email invites you to book time now, as opposed to promising that someone may later. */
+function invitesYouToBook(subject: string, all: string): boolean {
+  if (MEETING_INVITE_SUBJECT_RE.test(subject)) return true
+  for (const m of all.matchAll(MEETING_INVITE_RE)) {
+    const at = m.index ?? 0
+    const sentenceStart = Math.max(all.lastIndexOf('.', at), all.lastIndexOf('!', at), all.lastIndexOf('?', at), all.lastIndexOf('\n', at)) + 1
+    if (!PROMISE_RE.test(all.slice(sentenceStart, at))) return true
+  }
+  return false
+}
 
 const REQUEST_HINT_RE = /(please (send|provide|reply|answer|share|confirm|complete)|could you|can you|would you)/
 
@@ -88,7 +131,9 @@ export function domainRuleAllowed(fromAddr: string | null): boolean {
 
 /**
  * Deterministic tagging for the obvious cases. Checks run in tag precedence order
- * (Rejected > Meeting > Needs Attention > Applied > Junk), so the first hit wins.
+ * (Rejected > Meeting > Needs Attention > Applied > Junk), so the first hit wins. The one exception is a
+ * verification code, which is Junk even when it mentions an application. An invitation to book a call is
+ * Meeting even when it begins by thanking you for applying.
  * Returns null when no rule applies.
  */
 export function applyRules(e: ClassifyInput): Verdict | null {
@@ -112,12 +157,23 @@ export function applyRules(e: ClassifyInput): Verdict | null {
     return { tag: 'Meeting', confidence: jobRelated ? 0.92 : 0.8, reason: `scheduling link (${meetingHost})` }
   }
 
+  // A recruiter inviting you to book a call often opens with "Thank you for applying", so this runs before Applied.
+  // Their booking page may not be on the known scheduling sites (a tracking system's own "pick a time" page).
+  if (jobRelated && !e.listUnsubscribe && invitesYouToBook(subject, all)) {
+    return { tag: 'Meeting', confidence: 0.88, reason: 'invites you to book a time' }
+  }
+
+  // Before Needs Attention: job sites send "enter this code to complete your application" mid-application.
+  if (CODE_RE.test(head)) {
+    return { tag: 'Junk', confidence: 0.95, reason: 'verification code' }
+  }
+
   if (NEEDS_ATTENTION_RE.test(all) && jobRelated) {
     return { tag: 'Needs Attention', confidence: 0.88, reason: 'application not complete' }
   }
 
   if (OTP_RE.test(head)) {
-    // "Verify your email to continue your application" is not junk; let the model look.
+    // Without a code, "Verify your email to continue your application" is not junk; let the model look.
     return { tag: 'Junk', confidence: jobRelated ? 0.6 : 0.95, reason: 'verification / password / key email' }
   }
 

@@ -35,6 +35,8 @@ const api: MailApi = {
   chat: invoke('chat:send') as MailApi['chat'],
   cancelChat: invoke('chat:cancel') as MailApi['cancelChat'],
   openExternal: invoke('shell:open') as MailApi['openExternal'],
+  openLogFolder: invoke('log:open') as MailApi['openLogFolder'],
+  copyLog: invoke('log:copy') as MailApi['copyLog'],
   onEvent(listener) {
     const handler = (_: IpcRendererEvent, event: AppEvent) => listener(event)
     ipcRenderer.on('app:event', handler)

@@ -1,11 +1,15 @@
 // Which filters each view offers and how they become a list query. No page access, so it can be tested.
-import { dateRange, DATE_PRESET_LABEL, isDatePreset, type DatePreset } from './dates'
+import { cleanRange, dateRange, DATE_PRESET_LABEL, describeRange, isDatePreset, type CustomRange, type DatePreset } from './dates'
 import type { Tag } from './tags'
 import type { ListQuery } from './types'
 
-/** What the filter bar can set. Dates are preset ids, so the query key stays stable until the user changes it. */
+/**
+ * What the filter bar can set. Dates are preset ids, so the query key stays stable until the user changes it.
+ * A hand-picked `range` (exact dates and times) replaces the preset.
+ */
 export interface Filters {
   date?: DatePreset
+  range?: CustomRange
   unread?: boolean
   attachments?: boolean
   invite?: boolean
@@ -15,8 +19,9 @@ export interface Filters {
   oldest?: boolean
 }
 
-export type ToggleKey = Exclude<keyof Filters, 'date'>
-export type FilterKey = keyof Filters
+export type ToggleKey = Exclude<keyof Filters, 'date' | 'range'>
+/** The date control stands for both the presets and the custom range. */
+export type FilterKey = 'date' | ToggleKey
 
 export const TOGGLE_LABEL: Record<ToggleKey, string> = {
   unread: 'Unread',
@@ -67,7 +72,9 @@ const TOGGLES = Object.keys(TOGGLE_LABEL) as ToggleKey[]
 export function cleanFilters(f: Filters | undefined): Filters {
   const out: Filters = {}
   if (!f) return out
-  if (isDatePreset(f.date)) out.date = f.date
+  const range = cleanRange(f.range)
+  if (range) out.range = range
+  else if (isDatePreset(f.date)) out.date = f.date
   for (const k of TOGGLES) if (f[k] === true) out[k] = true
   return out
 }
@@ -81,7 +88,7 @@ export function activeCount(f: Filters | undefined): number {
 export function filtersToQuery(f: Filters | undefined, now = new Date()): Partial<ListQuery> {
   const c = cleanFilters(f)
   return {
-    ...(c.date ? dateRange(c.date, now) : {}),
+    ...(c.range ? c.range : c.date ? dateRange(c.date, now) : {}),
     unreadOnly: c.unread,
     hasAttachments: c.attachments,
     hasInvite: c.invite,
@@ -96,7 +103,8 @@ export function filtersToQuery(f: Filters | undefined, now = new Date()): Partia
 export function describeFilters(f: Filters | undefined): string {
   const c = cleanFilters(f)
   const parts: string[] = []
-  if (c.date) parts.push(DATE_PRESET_LABEL[c.date].toLowerCase())
+  if (c.range) parts.push(describeRange(c.range))
+  else if (c.date) parts.push(DATE_PRESET_LABEL[c.date].toLowerCase())
   for (const k of TOGGLES) if (c[k]) parts.push(TOGGLE_LABEL[k].toLowerCase())
   return parts.join(', ')
 }

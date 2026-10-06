@@ -1,3 +1,11 @@
+import { isLocalUrl } from './ollama'
+
+/**
+ * Whether new mail is tagged as it arrives. `auto` means yes, except when Ollama runs on this same PC:
+ * loading a model next to the app can freeze a laptop, so there it waits for the "Tag new emails" button.
+ */
+export type AutoTagMode = 'auto' | 'on' | 'off'
+
 export interface Settings {
   /** Ollama base URL, e.g. http://192.168.1.50:11434 for a GPU PC on the LAN. */
   ollamaUrl: string
@@ -5,8 +13,8 @@ export interface Settings {
   chatModel: string
   /** Model used to classify emails. Empty = same as chatModel (avoids swapping models in VRAM). */
   classifierModel: string
-  /** Classify new mail automatically after each sync. */
-  autoTag: boolean
+  /** Classify new mail automatically after each sync (see AutoTagMode). */
+  autoTag: AutoTagMode
   /** Write tags back as Gmail labels / Outlook categories. */
   writeBack: boolean
   /** How far back the first sync of an account goes. */
@@ -27,7 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ollamaUrl: 'http://127.0.0.1:11434',
   chatModel: 'qwen2.5:7b',
   classifierModel: '',
-  autoTag: true,
+  autoTag: 'auto',
   writeBack: true,
   syncDays: 90,
   syncIntervalSec: 60,
@@ -40,6 +48,11 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export function classifierModelOf(s: Settings): string {
   return s.classifierModel.trim() || s.chatModel
+}
+
+/** Whether new mail is tagged on arrival with these settings. */
+export function autoTagActive(s: Pick<Settings, 'autoTag' | 'ollamaUrl'>): boolean {
+  return s.autoTag === 'on' || (s.autoTag === 'auto' && !isLocalUrl(s.ollamaUrl))
 }
 
 /** Keeps only known keys with the right primitive type and clamps numbers to sane ranges. */
@@ -57,9 +70,13 @@ export function sanitizeSettings(patch: Record<string, unknown>): Partial<Settin
         if (typeof value === 'string') out[key as 'chatModel'] = value.trim()
         break
       case 'autoTag':
+        // Older versions saved a yes/no. Their "yes" was the default, so it becomes "auto"; a "no" stays off.
+        if (value === 'auto' || value === 'on' || value === 'off') out.autoTag = value
+        else if (typeof value === 'boolean') out.autoTag = value ? 'auto' : 'off'
+        break
       case 'writeBack':
       case 'mcpHttpEnabled':
-        if (typeof value === 'boolean') out[key as 'autoTag'] = value
+        if (typeof value === 'boolean') out[key as 'writeBack'] = value
         break
       case 'syncDays':
         out.syncDays = num(value, 1, 3650)

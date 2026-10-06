@@ -18,6 +18,45 @@ export interface TaggingOptions {
   ids?: string[]
   onProgress?: (p: TaggingProgress) => void
   signal?: AbortSignal
+  /** Waits before each retry of an email whose Ollama connection dropped (tests pass zeros). */
+  retryDelaysMs?: number[]
+}
+
+/** A dropped connection is usually Ollama restarting its model, so give it a moment, twice, before giving up. */
+const RETRY_DELAYS_MS = [1500, 6000]
+/** Failures in a row (across workers) that mean something is wrong with Ollama, not with one email. */
+const MAX_FAILED_IN_A_ROW = 5
+
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0 || signal?.aborted) return Promise.resolve()
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    signal?.addEventListener('abort', done, { once: true })
+  })
+}
+
+/** Asks the model, retrying only when the connection dropped. Any other error is thrown straight away. */
+async function classifyWithRetry(
+  classifier: LlmClassifier,
+  input: ClassifyInput,
+  examples: Parameters<LlmClassifier['classify']>[1],
+  delays: number[],
+  signal?: AbortSignal
+): Promise<Verdict> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await classifier.classify(input, examples, signal)
+    } catch (err) {
+      const retry = err instanceof OllamaError && err.kind === 'dropped' && attempt < delays.length && !signal?.aborted
+      if (!retry) throw err
+      await pause(delays[attempt], signal)
+    }
+  }
 }
 
 export function toClassifyInput(c: ClassifyCandidate): ClassifyInput {
@@ -113,6 +152,8 @@ export class Tagger {
       if (pendingIds.length) this.onTagged(pendingIds)
       pendingIds = []
     }
+    // Tell the UI right away what is about to happen, before the first email is done.
+    if (candidates.length) progress('start')
     const record = (c: ClassifyCandidate, v: Verdict, source: TagSource, model: string | null) => {
       this.store.setTag({
         messageId: c.id,
@@ -150,24 +191,34 @@ export class Tagger {
     // Stage 2: the model, for what rules could not settle.
     if (needsModel.length && !opts.signal?.aborted) {
       const classifier = this.getClassifier()
+      result.model = classifier.model
       const configured = this.store.getSettings().llmConcurrency
       // 0 = Auto: the first email runs alone (it loads the model), then the tuner takes over.
       let tuner: ConcurrencyTuner | null = null
       let fatal: Error | null = null
+      let failedInARow = 0
       let lastFlush = Date.now()
+      const retryDelays = opts.retryDelaysMs ?? RETRY_DELAYS_MS
+      progress('model') // the first answer can take a while: Ollama loads the model into memory first
       const classifyOne = async (c: ClassifyCandidate) => {
         if (fatal || opts.signal?.aborted) return
         try {
           const examples = this.store.similarCorrections(c.fromAddr, 3)
-          const verdict = await classifier.classify(toClassifyInput(c), examples, opts.signal)
+          const verdict = await classifyWithRetry(classifier, toClassifyInput(c), examples, retryDelays, opts.signal)
           record(c, verdict, 'llm', classifier.model)
           result.byLlm++
+          failedInARow = 0
           progress('llm', c.id, verdict.tag)
         } catch (err) {
           const kind = err instanceof OllamaError ? err.kind : null
-          // Server down, model missing or cancelled: stop instead of failing every remaining email.
-          if (kind === 'unreachable' || kind === 'model_missing' || kind === 'aborted') fatal ??= err as Error
-          else result.failed++
+          // Server down, still dropping connections after the retries, model missing or cancelled:
+          // stop instead of failing every remaining email.
+          if (kind === 'unreachable' || kind === 'dropped' || kind === 'model_missing' || kind === 'aborted') fatal ??= err as Error
+          else {
+            result.failed++
+            result.failureSample ??= (err as Error).message
+            if (++failedInARow >= MAX_FAILED_IN_A_ROW) fatal ??= new Error(`Stopped after ${failedInARow} emails failed in a row: ${(err as Error).message}`)
+          }
           progress('llm')
         }
         done++
@@ -190,7 +241,9 @@ export class Tagger {
       }
       flushTagged()
       if (fatal) {
-        result.error = (fatal as Error).message
+        const stopped = fatal as Error // set inside classifyOne, which TypeScript does not follow
+        result.error = stopped.message
+        if (stopped instanceof OllamaError) result.errorKind = stopped.kind
         result.failed = needsModel.length - result.byLlm
       }
     }

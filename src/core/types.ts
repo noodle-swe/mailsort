@@ -112,9 +112,27 @@ export interface StorageStats {
 export interface TaggingProgress {
   done: number
   total: number
-  stage: 'rules' | 'llm' | 'done'
+  /** `start`: the emails to tag are known. `model`: waiting for Ollama (it may be loading the model). */
+  stage: 'start' | 'rules' | 'model' | 'llm' | 'done'
   lastId?: string
   lastTag?: Tag
+}
+
+/** How a tagging run ended, for the status line under the "Tag new emails" button. */
+export interface TaggingFinished {
+  total: number
+  tagged: number
+  failed: number
+  ms: number
+  error?: string
+  /** Which kind of Ollama problem stopped the run (unreachable, dropped, model_missing, ...), for the log. */
+  errorKind?: string
+  /** The model that was asked; absent when the rules settled everything. */
+  model?: string
+  /** What the first email that failed on its own said, to help spot a pattern. */
+  failureSample?: string
+  /** Started by the sync after new mail arrived, not by the user. */
+  auto: boolean
 }
 
 export interface TaggingResult {
@@ -126,5 +144,8 @@ export interface TaggingResult {
   failed: number
   ms: number
   error?: string
+  errorKind?: string
+  model?: string
+  failureSample?: string
   results: { id: string; from: string | null; subject: string | null; tag: Tag; source: TagSource }[]
 }

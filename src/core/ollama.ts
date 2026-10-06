@@ -33,7 +33,16 @@ export interface ChatChunk {
   eval_count?: number
 }
 
-export type OllamaErrorKind = 'unreachable' | 'model_missing' | 'timeout' | 'aborted' | 'http'
+/** `dropped`: Ollama accepted the connection and then closed it (a crash, a restart or running out of memory). Worth a retry, unlike `unreachable`. */
+export type OllamaErrorKind = 'unreachable' | 'dropped' | 'model_missing' | 'timeout' | 'aborted' | 'http'
+
+const DROPPED_CODES = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET', 'UND_ERR_CLOSED'])
+
+/** Whether a failed request lost its connection mid-way, as opposed to never connecting. */
+function isDropError(err: unknown): boolean {
+  const code = ((err as Error | undefined)?.cause as { code?: string } | undefined)?.code ?? (err as { code?: string } | undefined)?.code
+  return !!code && DROPPED_CODES.has(code)
+}
 
 export class OllamaError extends Error {
   constructor(
@@ -78,6 +87,12 @@ export class OllamaClient {
     } catch (err) {
       if (init.signal?.aborted) throw new OllamaError('Request cancelled', 'aborted')
       if (timeout.aborted) throw new OllamaError(`Ollama at ${this.baseUrl} did not answer in time`, 'timeout')
+      if (isDropError(err)) {
+        throw new OllamaError(
+          `Ollama at ${this.baseUrl} dropped the connection (${(err as Error).cause ?? (err as Error).message}). It may have crashed or run out of memory.`,
+          'dropped'
+        )
+      }
       throw new OllamaError(
         `Can't reach Ollama at ${this.baseUrl} (${(err as Error).cause ?? (err as Error).message}). ` +
           'Check that Ollama is running, OLLAMA_HOST=0.0.0.0 is set on that PC, and port 11434 is open.',
@@ -128,7 +143,13 @@ export class OllamaClient {
 
   async chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatChunk> {
     const res = await this.request('/api/chat', { method: 'POST', body: JSON.stringify({ ...req, stream: false }), signal })
-    return (await res.json()) as ChatChunk
+    try {
+      return (await res.json()) as ChatChunk
+    } catch (err) {
+      if (signal?.aborted) throw new OllamaError('Request cancelled', 'aborted')
+      if (isDropError(err)) throw new OllamaError(`Ollama at ${this.baseUrl} dropped the connection while answering. It may have crashed or run out of memory.`, 'dropped')
+      throw err
+    }
   }
 
   /** Streams NDJSON chunks from /api/chat. */

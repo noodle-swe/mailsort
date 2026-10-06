@@ -39,6 +39,7 @@ Guidance:
 - Needs Attention: the candidate's application is incomplete or a required step to submit it is missing.
 - Applied: a confirmation that the application was received, with nothing else asked.
 - Junk: newsletters, marketing, job alerts and digests, social notifications, receipts, password resets, verification codes, API keys.
+- A verification or security code is always Junk, even when a job site sends it while the candidate applies.
 - Other: anything else, or you cannot tell.
 Answer with JSON: {"reason": "<at most 12 words>", "tag": "<one tag>", "confidence": <0 to 1>}.`
 
@@ -66,6 +67,10 @@ const FEW_SHOT: { email: string; answer: { reason: string; tag: string; confiden
   {
     email: 'From: Job Board <alerts@jobboard.com>\nSubject: 25 new jobs for you\n\nSenior Analyst at Foo, Data Scientist at Bar... Unsubscribe',
     answer: { reason: 'automated job alert digest', tag: 'Junk', confidence: 0.95 }
+  },
+  {
+    email: 'From: Acme Careers <no-reply@acme.com>\nSubject: Your security code for the Acme application\n\nEnter this code to continue your application: 482913. It expires in 10 minutes.',
+    answer: { reason: 'verification code, not about the application status', tag: 'Junk', confidence: 0.95 }
   },
   {
     email: 'From: Mom <mom@example.com>\nSubject: Dinner Sunday?\n\nAre you coming for dinner on Sunday?',

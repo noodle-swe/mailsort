@@ -15,5 +15,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["src/renderer/**/*", "src/preload/api.ts", "src/core/types.ts", "src/core/tags.ts", "src/core/dates.ts", "src/core/settings.ts", "src/core/events.ts", "src/core/ollama.ts", "src/core/ollama-models.ts", "src/core/ui-prefs.ts", "src/core/view-filters.ts"]
+  "include": ["src/renderer/**/*", "src/preload/api.ts", "src/core/types.ts", "src/core/tags.ts", "src/core/dates.ts", "src/core/settings.ts", "src/core/events.ts", "src/core/ollama.ts", "src/core/ollama-models.ts", "src/core/tagging-status.ts", "src/core/ui-prefs.ts", "src/core/view-filters.ts"]
 }

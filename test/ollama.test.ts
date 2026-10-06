@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http'
+import { createServer, type RequestListener, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Core } from '../src/core/core'
@@ -224,5 +224,30 @@ describe('Core.pullModel', () => {
   it('will not start Ollama for a server on another computer', async () => {
     core = makeCore()
     await expect(core.startOllama('http://192.168.1.50:11434')).rejects.toThrow('another computer')
+  })
+})
+
+describe('OllamaClient connection errors', () => {
+  const listen = async (handler: RequestListener = (_req, res) => res.end('{}')) => {
+    const server = createServer(handler)
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    return { server, url: `http://127.0.0.1:${(server.address() as AddressInfo).port}` }
+  }
+  const ask = (url: string) => new OllamaClient(url).chat({ model: 'm', messages: [] })
+
+  it('calls a connection that Ollama closes "dropped", so the caller can retry it', async () => {
+    const { server, url } = await listen((req) => req.socket.destroy())
+    try {
+      await expect(ask(url)).rejects.toMatchObject({ name: 'OllamaError', kind: 'dropped' })
+    } finally {
+      server.closeAllConnections()
+      server.close()
+    }
+  })
+
+  it('calls a port nobody listens on "unreachable", which is not worth retrying', async () => {
+    const { server, url } = await listen()
+    await new Promise<void>((r) => server.close(() => r()))
+    await expect(ask(url)).rejects.toMatchObject({ name: 'OllamaError', kind: 'unreachable' })
   })
 })

@@ -11,7 +11,7 @@ import { createHttp } from './providers/http'
 import { GmailProvider } from './providers/gmail'
 import { OutlookProvider } from './providers/outlook'
 import type { MailProvider, SyncHandlers } from './providers/types'
-import { classifierModelOf, type Settings } from './settings'
+import { autoTagActive, classifierModelOf, type Settings } from './settings'
 import { Store } from './store'
 import type { Tag } from './tags'
 import type { Account, Provider, TaggingResult } from './types'
@@ -27,6 +27,12 @@ export interface CoreOptions {
 }
 
 const DAY = 86_400_000
+
+/** Most emails tagged automatically after one sync. A big import must not make the PC load a model for thousands of emails. */
+export const AUTO_TAG_LIMIT = 50
+/** Automatic runs in a row that fail before automatic tagging pauses itself, and for how long. */
+const AUTO_TAG_MAX_FAILURES = 2
+const AUTO_TAG_PAUSE_MIN = 30
 
 /** Calls fn at most once per `ms` per key, always delivering the latest call. */
 function throttleByKey(ms: number, fn: (key: string) => void): (key: string) => void {
@@ -58,6 +64,8 @@ export class Core {
   private writebackTimer: NodeJS.Timeout | null = null
   private writebackRunning: Promise<void> | null = null
   private writebackAgain = false
+  private autoTagFailures = 0
+  private autoTagPause: { key: string; until: number } | null = null
   private readonly pulls = new Map<string, { controller: AbortController; progress: PullProgress }>()
   private readonly notifyMessages = throttleByKey(400, (accountId) => this.events.emit({ type: 'messages-changed', accountId }))
 
@@ -207,10 +215,7 @@ export class Core {
       if (err instanceof AuthError) this.providers.delete(accountId)
     }
     this.events.emit({ type: 'sync-status', accountId, syncing: false, error })
-    if (added.length && settings.autoTag) {
-      // Large first syncs: tag the whole account instead of passing thousands of ids.
-      void this.runTagging(added.length > 500 ? { accountId, limit: 5000 } : { ids: added, limit: added.length }).catch(() => undefined)
-    }
+    void this.autoTagNew(added).catch(() => undefined)
     if (!error) this.scheduleWriteback()
     return added.length
   }
@@ -251,14 +256,76 @@ export class Core {
 
   // ---------------------------------------------------------------- tagging
 
-  runTagging(opts: TaggingOptions = {}): Promise<TaggingResult> {
-    return this.tagger.run({
-      ...opts,
-      onProgress: (progress) => {
-        this.events.emit({ type: 'tagging-progress', progress })
-        opts.onProgress?.(progress)
+  /**
+   * Tags emails and reports every step as events: progress while it runs, and a summary when it ends
+   * (`auto` marks a run started by the sync rather than by the user).
+   */
+  async runTagging(opts: TaggingOptions & { auto?: boolean } = {}): Promise<TaggingResult> {
+    const { auto = false, ...options } = opts
+    let result: TaggingResult
+    try {
+      result = await this.tagger.run({
+        ...options,
+        onProgress: (progress) => {
+          this.events.emit({ type: 'tagging-progress', progress })
+          options.onProgress?.(progress)
+        }
+      })
+    } catch (err) {
+      // Never leave the UI waiting on a run that is not running any more.
+      this.events.emit({ type: 'tagging-progress', progress: { done: 0, total: 0, stage: 'done' } })
+      this.events.emit({ type: 'tagging-finished', summary: { total: 0, tagged: 0, failed: 0, ms: 0, error: (err as Error).message, auto } })
+      throw err
+    }
+    this.events.emit({
+      type: 'tagging-finished',
+      summary: {
+        total: result.total,
+        tagged: result.tagged,
+        failed: result.failed,
+        ms: result.ms,
+        error: result.error,
+        errorKind: result.errorKind,
+        model: result.model,
+        failureSample: result.failureSample,
+        auto
       }
     })
+    // A run the user started that worked means Ollama is fine again: let automatic tagging resume.
+    if (!auto && !result.error && result.tagged > 0) {
+      this.autoTagFailures = 0
+      this.autoTagPause = null
+    }
+    return result
+  }
+
+  /**
+   * Tags the newest of the just-synced emails, a few at a time. It does nothing when automatic tagging is off
+   * (or waits for the button because Ollama runs on this PC), and it pauses itself when Ollama keeps failing.
+   * Whatever it leaves untagged waits for the "Tag new emails" button.
+   */
+  async autoTagNew(added: string[], now = Date.now()): Promise<TaggingResult | null> {
+    const settings = this.store.getSettings()
+    if (!added.length || !autoTagActive(settings)) return null
+    // A pause only holds for the Ollama address and model it was set for; changing either lifts it.
+    const key = `${settings.ollamaUrl}|${classifierModelOf(settings)}`
+    if (this.autoTagPause?.key === key && now < this.autoTagPause.until) return null
+
+    let result: TaggingResult
+    try {
+      result = await this.runTagging({ ids: added.slice(0, 5000), limit: AUTO_TAG_LIMIT, auto: true })
+    } catch {
+      return null // runTagging already told the UI
+    }
+    const failed = !!result.error || (result.total > 0 && result.tagged === 0)
+    if (!failed) {
+      this.autoTagFailures = 0
+    } else if (++this.autoTagFailures >= AUTO_TAG_MAX_FAILURES) {
+      this.autoTagFailures = 0
+      this.autoTagPause = { key, until: now + AUTO_TAG_PAUSE_MIN * 60_000 }
+      this.events.emit({ type: 'auto-tag-paused', reason: result.error ?? 'No email could be tagged.', minutes: AUTO_TAG_PAUSE_MIN })
+    }
+    return result
   }
 
   /** A tag chosen by the user: wins over rules and the model, and is remembered as a correction. */

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Core } from '../src/core/core'
-import { dateRange } from '../src/core/dates'
+import { cleanRange, dateRange, describeRange, fromDateTimeInput, toBoxToUntil, toDateTimeInput, untilToToBox } from '../src/core/dates'
 import { sanitizeQuery } from '../src/core/query'
 import type { Tag } from '../src/core/tags'
 import type { IncomingMessage } from '../src/core/types'
@@ -32,6 +32,42 @@ describe('dateRange', () => {
 
   it('counts 30 days back from now', () => {
     expect(dateRange('30d', wed)).toEqual({ since: wed.getTime() - 30 * 86_400_000 })
+  })
+})
+
+describe('custom date and time range', () => {
+  it('round-trips local date and time through the input format', () => {
+    const t = new Date(2026, 9, 5, 9, 5).getTime()
+    expect(toDateTimeInput(t)).toBe('2026-10-05T09:05')
+    expect(fromDateTimeInput('2026-10-05T09:05')).toBe(t)
+    expect(toDateTimeInput(undefined)).toBe('')
+    expect(fromDateTimeInput('')).toBeUndefined()
+    expect(fromDateTimeInput('not a date')).toBeUndefined()
+  })
+
+  it('includes the whole minute named in the "to" box', () => {
+    const to = new Date(2026, 9, 6, 17, 0).getTime()
+    expect(toBoxToUntil(to)).toBe(to + 60_000)
+    expect(untilToToBox(toBoxToUntil(to))).toBe(to)
+    expect(untilToToBox(undefined)).toBeUndefined()
+  })
+
+  it('keeps open-ended ranges and drops empty, backwards or mistyped ones', () => {
+    expect(cleanRange({ since: 5 })).toEqual({ since: 5 })
+    expect(cleanRange({ until: 9 })).toEqual({ until: 9 })
+    expect(cleanRange({ since: 5, until: 9 })).toEqual({ since: 5, until: 9 })
+    expect(cleanRange({})).toBeUndefined()
+    expect(cleanRange({ since: 9, until: 5 })).toBeUndefined()
+    expect(cleanRange({ since: Number.NaN, until: 'x' })).toBeUndefined()
+    expect(cleanRange(null)).toBeUndefined()
+  })
+
+  it('describes the range for the list header', () => {
+    const since = new Date(2026, 9, 5, 9, 0).getTime()
+    const until = toBoxToUntil(new Date(2026, 9, 6, 17, 30).getTime())
+    expect(describeRange({ since, until }, 'en-US')).toBe('Oct 5, 09:00 AM to Oct 6, 05:30 PM')
+    expect(describeRange({ since }, 'en-US')).toBe('from Oct 5, 09:00 AM')
+    expect(describeRange({ until }, 'en-US')).toBe('until Oct 6, 05:30 PM')
   })
 })
 
@@ -105,6 +141,14 @@ describe('listMessages filters', () => {
     expect(ids(core, { tag: 'Applied', ...lastWeek })).toEqual(['a:m0', 'a:m1', 'b:m5'])
     expect(ids(core, { tag: 'Applied', accountId: 'b', ...lastWeek })).toEqual(['b:m5'])
     expect(ids(core, { ...dateRange('week', new Date(2026, 9, 7, 15, 30)) })).toEqual(['a:m2', 'a:m3', 'a:m4', 'b:m6'])
+  })
+
+  it('gives emails between an exact start and end time, end minute included', () => {
+    core = filterCore()
+    const range = { since: day(10, 5, 9), until: toBoxToUntil(day(10, 6, 12)) }
+    expect(ids(core, range)).toEqual(['a:m2', 'a:m3', 'b:m6'])
+    expect(ids(core, { since: day(10, 5, 9) + 60_000 })).toEqual(['a:m3', 'a:m4', 'b:m6'])
+    expect(ids(core, { until: day(10, 5, 10) })).toEqual(['a:m0', 'a:m1', 'a:m2', 'b:m5'])
   })
 
   it('filters attachments, invites and newsletters', () => {

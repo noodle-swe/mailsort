@@ -8,10 +8,12 @@ import {
   PlusIcon,
   SparkleIcon,
   TrayIcon,
-  WarningCircleIcon
+  WarningCircleIcon,
+  XIcon
 } from '@phosphor-icons/react'
 import { TAGS } from '../../../core/tags'
-import type { Account, Provider, TaggingProgress } from '../../../core/types'
+import { taggingStatus } from '../../../core/tagging-status'
+import type { Account, Provider, TaggingFinished, TaggingProgress } from '../../../core/types'
 import { api } from '../lib/api'
 import { ago } from '../lib/format'
 import type { View } from '../App'
@@ -23,6 +25,12 @@ interface Props {
   accounts: Account[]
   syncing: Record<string, boolean>
   progress: TaggingProgress | null
+  /** The button was clicked and the first progress has not arrived yet. */
+  tagStarting: boolean
+  /** How the last run ended, until the next one starts or it is dismissed. */
+  tagFinished: TaggingFinished | null
+  onTag: () => void
+  onDismissTagFinished: () => void
   configured?: Record<Provider, boolean>
   onAddAccount: (p: Provider) => void
   /** Narrow icon rail instead of the full sidebar. */
@@ -81,7 +89,7 @@ export default function Sidebar(p: Props) {
   const totalUnread = Object.values(unread.data ?? {}).reduce((a, b) => a + b, 0)
   const isAll = !p.view.accountId && !p.view.tag
   const untagged = counts.data?.Untagged ?? 0
-  const pct = p.progress ? p.progress.done / Math.max(1, p.progress.total) : 0
+  const status = taggingStatus({ progress: p.progress, starting: p.tagStarting, finished: p.tagFinished })
 
   return (
     <aside
@@ -144,26 +152,39 @@ export default function Sidebar(p: Props) {
       <div className="mt-auto flex flex-col gap-3">
         <div className="px-0.5">
           <button
-            onClick={() => void api.runTagging({}).catch(() => undefined)}
-            disabled={!!p.progress}
+            onClick={p.onTag}
+            disabled={status.busy}
+            aria-busy={status.busy}
             className="press flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-primary px-3 text-[13px] font-medium text-on-primary hover:opacity-90 disabled:opacity-80 group-data-[compact=true]/side:px-0"
-            title={p.progress ? `Tagging ${p.progress.done} of ${p.progress.total}` : 'Tag new emails'}
-            aria-label={p.progress ? `Tagging ${p.progress.done} of ${p.progress.total}` : 'Tag new emails'}
+            title={status.label}
+            aria-label={status.label}
           >
             <SparkleIcon size={15} weight="fill" className="shrink-0" />
-            <span className="truncate group-data-[compact=true]/side:hidden">{p.progress ? `Tagging ${p.progress.done} of ${p.progress.total}` : 'Tag new emails'}</span>
+            <span className="truncate group-data-[compact=true]/side:hidden">{status.label}</span>
           </button>
           <div className="mt-1.5 h-[3px] overflow-hidden rounded-full" aria-hidden>
-            {p.progress && (
-              <div
-                className="h-full origin-left rounded-full bg-primary transition-transform duration-300"
-                style={{ transform: `scaleX(${pct})` }}
-              />
-            )}
+            {status.busy &&
+              (status.fraction === null ? (
+                <div className="skeleton h-full w-full rounded-full" />
+              ) : (
+                <div className="h-full origin-left rounded-full bg-primary transition-transform duration-300" style={{ transform: `scaleX(${status.fraction})` }} />
+              ))}
           </div>
-          {!p.progress && untagged > 0 && (
-            <div className="-mt-0.5 text-center text-[11px] text-muted group-data-[compact=true]/side:hidden">{untagged} waiting to be tagged</div>
-          )}
+          <div role="status" aria-live="polite" className="flex flex-col gap-1 group-data-[compact=true]/side:hidden">
+            {status.line && (
+              <div className="flex items-start gap-1.5 px-0.5 text-[11px] leading-snug">
+                <span className={`line-clamp-4 min-w-0 flex-1 ${status.line.tone === 'error' ? 'text-danger' : 'text-muted'}`} title={status.line.text}>
+                  {status.line.text}
+                </span>
+                {!status.busy && p.tagFinished && (
+                  <button onClick={p.onDismissTagFinished} aria-label="Dismiss" className="press -mt-0.5 shrink-0 rounded-[6px] p-1 text-muted hover:text-ink">
+                    <XIcon size={11} />
+                  </button>
+                )}
+              </div>
+            )}
+            {!status.busy && untagged > 0 && <div className="text-center text-[11px] text-muted">{untagged} waiting to be tagged</div>}
+          </div>
         </div>
 
         <div className="flex flex-col gap-0.5">

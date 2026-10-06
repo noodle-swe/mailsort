@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { ipcMain, shell, type BrowserWindow } from 'electron'
+import { clipboard, ipcMain, shell, type BrowserWindow } from 'electron'
 import type { Core } from '../core/core'
+import type { Logger } from '../core/log'
 import { isTag } from '../core/tags'
 import { sanitizeQuery } from '../core/query'
 import type { Provider } from '../core/types'
@@ -12,22 +13,24 @@ interface Deps {
   core: Core
   agent: ChatAgent
   httpMcp: HttpMcpServer
+  log: Logger
   window: () => BrowserWindow | null
   status: () => AppStatus
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined)
 
-export function registerIpc({ core, agent, httpMcp, window, status }: Deps): void {
+export function registerIpc({ core, agent, httpMcp, log, window, status }: Deps): void {
   const send = (event: AppEvent) => {
     const w = window()
     if (w && !w.isDestroyed()) w.webContents.send('app:event', event)
   }
 
   // Tagging emits one progress event per email; forward at most ~10 per second.
+  // The one-off steps (start, waiting for the model, done) always go through.
   let lastProgress = 0
   core.on((event) => {
-    if (event.type === 'tagging-progress' && event.progress.stage !== 'done') {
+    if (event.type === 'tagging-progress' && (event.progress.stage === 'rules' || event.progress.stage === 'llm')) {
       const now = Date.now()
       if (now - lastProgress < 100) return
       lastProgress = now
@@ -35,8 +38,16 @@ export function registerIpc({ core, agent, httpMcp, window, status }: Deps): voi
     send(event)
   })
 
+  // A request from the window that fails is written to the log (the name of the request, never its arguments), then still reaches the window.
   const handle = (channel: string, fn: (...args: unknown[]) => unknown) =>
-    ipcMain.handle(channel, (_event, ...args) => fn(...args))
+    ipcMain.handle(channel, async (_event, ...args) => {
+      try {
+        return await fn(...args)
+      } catch (err) {
+        log.error('ipc', `${channel} failed`, err)
+        throw err
+      }
+    })
 
   handle('status', () => status())
 
@@ -117,10 +128,24 @@ export function registerIpc({ core, agent, httpMcp, window, status }: Deps): voi
       .filter((t) => t && (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string')
       .map((t) => ({ role: t.role, content: String(t.content).slice(0, 8000) }))
     const runId = randomUUID()
-    void agent.run(runId, clean, send)
+    void agent.run(runId, clean, (e) => {
+      if (e.kind === 'error') log.warn('chat', `assistant failed: ${e.error}`)
+      send(e)
+    })
     return runId
   })
   handle('chat:cancel', (runId) => agent.cancel(String(runId)))
+
+  handle('log:open', async () => {
+    const problem = await shell.openPath(log.dir)
+    if (problem) throw new Error(`Could not open the log folder: ${problem}`)
+  })
+  // The newest lines go to the clipboard, ready to paste into a message.
+  handle('log:copy', () => {
+    const text = log.tail(200)
+    clipboard.writeText(text)
+    return text ? text.split('\n').length : 0
+  })
 
   handle('shell:open', (url) => {
     const u = String(url)

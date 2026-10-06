@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import { autoTagActive } from '../src/core/settings'
 import { toFtsQuery } from '../src/core/store'
 import type { Core } from '../src/core/core'
 import { FIXTURES, seededCore, toIncoming } from './helpers'
@@ -84,6 +85,22 @@ describe('Store', () => {
     const s = core.store.updateSettings({ llmConcurrency: 99, ollamaUrl: 'http://10.0.0.5:11434/', bogus: 1, autoTag: 'yes' })
     expect(s.llmConcurrency).toBe(16)
     expect(s.ollamaUrl).toBe('http://10.0.0.5:11434')
-    expect(s.autoTag).toBe(true)
+    expect(s.autoTag).toBe('auto') // "yes" is not a mode, so the default stays
+  })
+
+  it('reads the old yes/no auto-tag setting: yes becomes "auto", no stays off', () => {
+    ;({ core } = seededCore())
+    expect(core.store.updateSettings({ autoTag: true }).autoTag).toBe('auto')
+    expect(core.store.updateSettings({ autoTag: false }).autoTag).toBe('off')
+    expect(core.store.updateSettings({ autoTag: 'on' }).autoTag).toBe('on')
+  })
+
+  it('tags on arrival unless Ollama is on this PC (or it is switched off)', () => {
+    const remote = 'http://192.168.1.50:11434'
+    expect(autoTagActive({ autoTag: 'auto', ollamaUrl: 'http://127.0.0.1:11434' })).toBe(false)
+    expect(autoTagActive({ autoTag: 'auto', ollamaUrl: 'http://localhost:11434' })).toBe(false)
+    expect(autoTagActive({ autoTag: 'auto', ollamaUrl: remote })).toBe(true)
+    expect(autoTagActive({ autoTag: 'on', ollamaUrl: 'http://127.0.0.1:11434' })).toBe(true)
+    expect(autoTagActive({ autoTag: 'off', ollamaUrl: remote })).toBe(false)
   })
 })

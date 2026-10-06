@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GoogleLogoIcon, MicrosoftOutlookLogoIcon, XIcon } from '@phosphor-icons/react'
-import type { Settings } from '../../../core/settings'
+import { isLocalUrl } from '../../../core/ollama'
+import { autoTagActive, type Settings } from '../../../core/settings'
 import { api } from '../lib/api'
 import { ago, bytes, cleanError } from '../lib/format'
 import { resetPanes } from '../lib/panes'
@@ -30,6 +31,7 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: api.listAccounts })
   const [form, setForm] = useState<Settings | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
+  const [logNote, setLogNote] = useState<{ text: string; error?: boolean } | null>(null)
 
   useEffect(() => {
     if (settings.data && !form) setForm(settings.data)
@@ -53,6 +55,12 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
   })
   const clear = useMutation({ mutationFn: api.clearCache, onSuccess: (s) => qc.setQueryData(['storage'], s) })
   const retag = useMutation({ mutationFn: () => api.runTagging({ retag: true }) })
+  const openLog = useMutation({ mutationFn: api.openLogFolder, onError: (err) => setLogNote({ text: cleanError(err), error: true }) })
+  const copyLog = useMutation({
+    mutationFn: api.copyLog,
+    onSuccess: (lines) => setLogNote({ text: lines ? `Copied the last ${lines} lines. Paste them into a message.` : 'The log is empty so far.' }),
+    onError: (err) => setLogNote({ text: cleanError(err), error: true })
+  })
 
   const removeAccount = async (id: string) => {
     await api.removeAccount(id)
@@ -86,9 +94,15 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
             <OllamaSection form={form} set={set} />
 
             <Section title="Tagging">
-              <Toggle checked={form.autoTag} onChange={(v) => set('autoTag', v)}>
+              <Toggle checked={autoTagActive(form)} onChange={(v) => set('autoTag', v ? 'on' : 'off')}>
                 Tag new emails as soon as they arrive
               </Toggle>
+              {isLocalUrl(form.ollamaUrl) && form.autoTag === 'auto' && (
+                <p className="-mt-2.5 pl-12 text-xs leading-relaxed text-muted">Ollama runs on this PC, so this stays off to keep the PC responsive. Use Tag new emails, or turn this on.</p>
+              )}
+              {isLocalUrl(form.ollamaUrl) && form.autoTag === 'on' && (
+                <p className="-mt-2.5 pl-12 text-xs leading-relaxed text-muted">Up to 50 new emails are tagged after each sync. Ollama runs on this PC, so it may slow down while it works.</p>
+              )}
               <Toggle checked={form.writeBack} onChange={(v) => set('writeBack', v)}>
                 Save tags to Gmail labels and Outlook categories, such as AI/Meeting
               </Toggle>
@@ -184,6 +198,26 @@ export default function SettingsSheet({ onClose }: { onClose: () => void }) {
                 <Field label="Port" htmlFor="mcp-port" hint={status.data?.mcpHttpUrl ? `Running at ${status.data.mcpHttpUrl}` : undefined}>
                   <input id="mcp-port" className={`${inputCls} w-28`} type="number" value={form.mcpHttpPort} onChange={(e) => set('mcpHttpPort', Number(e.target.value))} />
                 </Field>
+              )}
+            </Section>
+
+            <Section title="Troubleshooting">
+              <p className="text-[13px] leading-relaxed text-muted">
+                MailSort writes what went wrong (syncing, tagging, Ollama, crashes) to a log file. It never contains the text or subject of your emails, and addresses and sign-in tokens are hidden. If something fails, copy the log and send it.
+              </p>
+              {status.data?.logPath && <p className="selectable font-mono text-[11.5px] leading-relaxed break-all text-muted">{status.data.logPath}</p>}
+              <div className="flex flex-wrap items-center gap-3">
+                <button onClick={() => copyLog.mutate()} disabled={copyLog.isPending} className={buttonCls}>
+                  Copy recent log
+                </button>
+                <button onClick={() => openLog.mutate()} disabled={openLog.isPending} className={buttonCls}>
+                  Open log folder
+                </button>
+              </div>
+              {logNote && (
+                <p role="status" className={`text-xs ${logNote.error ? 'text-danger' : 'text-muted'}`}>
+                  {logNote.text}
+                </p>
               )}
             </Section>
           </div>

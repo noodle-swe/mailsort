@@ -2,8 +2,10 @@ import { join } from 'node:path'
 import { app, BrowserWindow, Menu, nativeTheme, safeStorage, shell } from 'electron'
 import type { SecretBox } from '../core/auth/providers'
 import { Core } from '../core/core'
+import { Logger } from '../core/log'
 import { ChatAgent } from './agent'
 import { captureScreens } from './capture'
+import { logStartup, watchApp, watchProcess, watchWindow } from './diagnostics'
 import { HttpMcpServer } from './http-mcp'
 import { registerIpc } from './ipc'
 import { PipeMcpServer } from './mcp-pipe'
@@ -28,6 +30,10 @@ app.setPath('userData', process.env.MAILSORT_DATA_DIR || join(app.getPath('appDa
 if (process.env.MAILSORT_THEME === 'light' || process.env.MAILSORT_THEME === 'dark') nativeTheme.themeSource = process.env.MAILSORT_THEME
 
 if (!app.requestSingleInstanceLock()) app.quit()
+
+// A plain-text log next to the database, so a problem on another PC can be understood afterwards.
+const log = new Logger({ dir: join(app.getPath('userData'), 'logs') })
+watchProcess(log)
 
 const secrets: SecretBox = {
   encrypt(plain) {
@@ -75,6 +81,7 @@ function createWindow(): BrowserWindow {
       spellcheck: false
     }
   })
+  watchWindow(log, win)
   if (!CAPTURE_DIR) win.once('ready-to-show', () => win.show())
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
@@ -123,23 +130,34 @@ app.whenReady().then(async () => {
     openUrl: (url) => shell.openExternal(url)
   })
 
+  watchApp(log, core)
   if (app.isPackaged) Menu.setApplicationMenu(null)
   const agent = new ChatAgent(core)
   const httpMcp = new HttpMcpServer(core)
   const settings = core.store.getSettings()
-  if (settings.mcpHttpEnabled) httpMcp.start(settings.mcpHttpPort).catch((err) => console.error('MCP HTTP server failed:', err))
+  if (settings.mcpHttpEnabled) {
+    httpMcp.start(settings.mcpHttpPort).catch((err) => {
+      console.error('MCP HTTP server failed:', err)
+      log.error('mcp', 'HTTP server failed to start', err)
+    })
+  }
 
   pipeMcp = new PipeMcpServer(core, dataDir, (n) => {
     if (n === 0) quitIfIdle()
   })
-  await pipeMcp.start().catch((err) => console.error('MCP pipe failed:', err))
+  await pipeMcp.start().catch((err) => {
+    console.error('MCP pipe failed:', err)
+    log.error('mcp', 'pipe failed to start', err)
+  })
 
   registerIpc({
     core,
     agent,
     httpMcp,
+    log,
     window: () => mainWindow,
     status: () => ({
+      logPath: log.path,
       configured: {
         gmail: !!(clientIds.googleClientId && clientIds.googleClientSecret),
         outlook: !!clientIds.microsoftClientId
@@ -165,7 +183,8 @@ app.whenReady().then(async () => {
 
   if (!BACKGROUND) showWindow()
   core.startBackground()
-})
+  void logStartup(log, core)
+}).catch((err) => log.error('main', 'startup failed', err))
 
 app.on('second-instance', (_event, argv) => {
   if (!argv.includes('--background')) showWindow()
@@ -177,6 +196,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('will-quit', () => {
+  log.info('app', 'MailSort is quitting')
   pipeMcp?.stop()
   core?.close()
   core = null

@@ -53,6 +53,10 @@ const APPLIED_RE =
 const NEEDS_ATTENTION_RE =
   /(complete your application|finish (your|the) application|continue your application|application (is )?(incomplete|not (yet )?complete)|(haven'?t|have not|did not|didn'?t) (finish|complete)(d)? (your|the) application|missing (required )?(information|documents?)|complete the (assessment|questionnaire|application form))/
 
+/** An email that delivers a code to type in. These are Junk even when a job site sends one while you apply. */
+const CODE_RE =
+  /(verification code|security code|confirmation code|authentication code|one[- ]time (pass(word|code)|code)|\botp\b|your (login|sign[- ]in|access) code|activation code|\bpasscode\b)/
+
 const OTP_RE =
   /(verification code|verify your (email|account|identity)|confirm your email( address)?|security code|one[- ]time (pass(word|code)|code)|\botp\b|your (login|sign[- ]in|access) code|password reset|reset your password|two[- ]factor|\b2fa\b|api key|access key|activation code|magic link|sign[- ]in link|new sign[- ]in|login attempt)/
 
@@ -88,7 +92,8 @@ export function domainRuleAllowed(fromAddr: string | null): boolean {
 
 /**
  * Deterministic tagging for the obvious cases. Checks run in tag precedence order
- * (Rejected > Meeting > Needs Attention > Applied > Junk), so the first hit wins.
+ * (Rejected > Meeting > Needs Attention > Applied > Junk), so the first hit wins. The one exception is a
+ * verification code, which is Junk even when it mentions an application.
  * Returns null when no rule applies.
  */
 export function applyRules(e: ClassifyInput): Verdict | null {
@@ -112,12 +117,17 @@ export function applyRules(e: ClassifyInput): Verdict | null {
     return { tag: 'Meeting', confidence: jobRelated ? 0.92 : 0.8, reason: `scheduling link (${meetingHost})` }
   }
 
+  // Before Needs Attention: job sites send "enter this code to complete your application" mid-application.
+  if (CODE_RE.test(head)) {
+    return { tag: 'Junk', confidence: 0.95, reason: 'verification code' }
+  }
+
   if (NEEDS_ATTENTION_RE.test(all) && jobRelated) {
     return { tag: 'Needs Attention', confidence: 0.88, reason: 'application not complete' }
   }
 
   if (OTP_RE.test(head)) {
-    // "Verify your email to continue your application" is not junk; let the model look.
+    // Without a code, "Verify your email to continue your application" is not junk; let the model look.
     return { tag: 'Junk', confidence: jobRelated ? 0.6 : 0.95, reason: 'verification / password / key email' }
   }
 

@@ -70,12 +70,79 @@ describe('Tagger', () => {
     expect(llm.calls).toBeLessThanOrEqual(4) // at most one call per worker before stopping
   })
 
-  it('reports progress up to done', async () => {
+  it('reports progress from the start, through the wait for the model, up to done', async () => {
     ;({ core } = seededCore(fakeClassifier(answers)))
     const seen: string[] = []
     await core.runTagging({ onProgress: (p) => seen.push(p.stage) })
+    expect(seen[0]).toBe('start')
     expect(seen.at(-1)).toBe('done')
     expect(seen).toContain('rules')
+    expect(seen.indexOf('model')).toBeGreaterThan(seen.indexOf('rules'))
+    expect(seen.indexOf('model')).toBeLessThan(seen.indexOf('llm'))
+  })
+
+  it('says nothing is starting when there is nothing to tag', async () => {
+    ;({ core } = seededCore(fakeClassifier(answers)))
+    await core.runTagging()
+    const seen: string[] = []
+    await core.runTagging({ onProgress: (p) => seen.push(p.stage) })
+    expect(seen).toEqual(['done'])
+  })
+
+  describe('when the connection to Ollama drops', () => {
+    const dropped = () => new OllamaError('Ollama dropped the connection (ECONNRESET)', 'dropped')
+    const noWait = [0, 0]
+
+    it('retries the email and carries on', async () => {
+      const opts: { fail?: Error } = { fail: dropped() }
+      const llm = fakeClassifier(answers, opts)
+      // The first answer fails once, then Ollama is back.
+      const classify = llm.classify.bind(llm)
+      llm.classify = async (...args) => {
+        const out = classify(...args)
+        opts.fail = undefined
+        return out
+      }
+      ;({ core } = seededCore(llm))
+      const r = await core.runTagging({ retryDelaysMs: noWait })
+      expect(r.error).toBeUndefined()
+      expect(r.tagged).toBe(FIXTURES.length)
+      expect(r.failed).toBe(0)
+    })
+
+    it('stops with a clear message once the retries are used up', async () => {
+      const llm = fakeClassifier(answers, { fail: dropped() })
+      ;({ core } = seededCore(llm))
+      const r = await core.runTagging({ retryDelaysMs: noWait })
+      expect(r.error).toMatch(/dropped the connection/)
+      expect(llm.calls).toBe(3) // the first try and two retries, then it stops instead of hammering Ollama
+      expect(r.byRules).toBeGreaterThan(0) // what the rules settled is kept
+      expect(r.byLlm).toBe(0)
+    })
+
+    it('records what kind of problem it was and which model was asked, for the log', async () => {
+      ;({ core } = seededCore(fakeClassifier(answers, { fail: dropped() })))
+      const r = await core.runTagging({ retryDelaysMs: noWait })
+      expect(r.errorKind).toBe('dropped')
+      expect(r.model).toBe('fake')
+    })
+
+    it('does not retry an Ollama that is not running at all', async () => {
+      const llm = fakeClassifier(answers, { fail: new OllamaError("Can't reach Ollama", 'unreachable') })
+      ;({ core } = seededCore(llm))
+      await core.runTagging({ retryDelaysMs: noWait })
+      expect(llm.calls).toBeLessThanOrEqual(4)
+      expect(llm.calls).toBeGreaterThan(0)
+    })
+  })
+
+  it('stops after five emails in a row fail, instead of failing them all', async () => {
+    const llm = fakeClassifier(answers, { fail: new OllamaError('Ollama error 500: model runner crashed', 'http') })
+    ;({ core } = seededCore(llm))
+    const r = await core.runTagging({ retryDelaysMs: [0, 0] })
+    expect(r.error).toMatch(/5 emails failed in a row/)
+    expect(r.failureSample).toMatch(/model runner crashed/) // the first failure is kept as a clue
+    expect(llm.calls).toBeLessThan(r.total - r.byRules)
   })
 })
 

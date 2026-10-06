@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChatCircleTextIcon, ColumnsIcon, GearSixIcon, ImageIcon, KeyboardIcon, ListIcon, MagnifyingGlassIcon, RowsIcon, SidebarSimpleIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import type { Tag } from '../../core/tags'
-import type { Provider, TaggingProgress } from '../../core/types'
+import type { Provider, TaggingFinished, TaggingProgress } from '../../core/types'
 import { api, useAppEvents } from './lib/api'
 import { cleanError } from './lib/format'
 import { cleanFilters, loadFilters, saveFilters, viewKey, type Filters } from './lib/filters'
@@ -160,6 +160,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [syncing, setSyncing] = useState<Record<string, boolean>>({})
   const [progress, setProgress] = useState<TaggingProgress | null>(null)
+  const [tagStarting, setTagStarting] = useState(false)
+  const [tagFinished, setTagFinished] = useState<TaggingFinished | null>(null)
   const [notice, setNotice] = useState<{ text: string; error?: boolean; autoHide?: boolean } | null>(null)
   const [filtersByView, setFiltersByView] = useState<Record<string, Filters>>(loadFilters)
   const [checked, setChecked] = useState<Set<string>>(new Set())
@@ -175,6 +177,12 @@ export default function App() {
     const t = setTimeout(() => setNotice(null), 3500)
     return () => clearTimeout(t)
   }, [notice])
+  // A good result fades from under the button; a problem stays until the next run or until it is dismissed.
+  useEffect(() => {
+    if (!tagFinished || tagFinished.error || tagFinished.failed > 0) return
+    const t = setTimeout(() => setTagFinished(null), 10_000)
+    return () => clearTimeout(t)
+  }, [tagFinished])
 
   /** The list reports its loaded ids; ticks on rows that are no longer there (re-tagged away, filtered out) are dropped. */
   const onRows = useCallback((ids: string[]) => {
@@ -220,6 +228,16 @@ export default function App() {
         break
       case 'tagging-progress':
         setProgress(e.progress.stage === 'done' ? null : e.progress)
+        if (e.progress.stage === 'start') setTagFinished(null)
+        break
+      case 'tagging-finished':
+        setTagStarting(false)
+        // Quiet automatic runs that found nothing to do are not worth a message.
+        if (!(e.summary.auto && e.summary.total === 0)) setTagFinished(e.summary)
+        if (e.summary.error) setNotice({ text: `Tagging stopped: ${e.summary.error}`, error: true })
+        break
+      case 'auto-tag-paused':
+        setNotice({ text: `Automatic tagging paused for ${e.minutes} minutes because Ollama kept failing: ${e.reason} Click Tag new emails to try again.`, error: true })
         break
       case 'writeback':
         if (e.failed) setNotice({ text: `${e.failed} tag(s) could not be saved to your mailbox${e.error ? `: ${e.error}` : '.'}`, error: true })
@@ -229,6 +247,19 @@ export default function App() {
         break
     }
   })
+
+  /** Shows "Starting" at once, so the click never looks ignored; the real progress takes over from the events. */
+  const runTagging = async () => {
+    setTagStarting(true)
+    setTagFinished(null)
+    try {
+      await api.runTagging({})
+    } catch (err) {
+      setNotice({ text: cleanError(err), error: true })
+    } finally {
+      setTagStarting(false)
+    }
+  }
 
   const addAccount = async (provider: Provider) => {
     setNotice({ text: `Finish signing in to ${provider === 'gmail' ? 'Google' : 'Microsoft'} in your browser.` })
@@ -372,6 +403,10 @@ export default function App() {
           accounts={accounts.data ?? []}
           syncing={syncing}
           progress={progress}
+          tagStarting={tagStarting}
+          tagFinished={tagFinished}
+          onTag={() => void runTagging()}
+          onDismissTagFinished={() => setTagFinished(null)}
           configured={status.data?.configured}
           onAddAccount={addAccount}
           collapsed={sideCollapsed}

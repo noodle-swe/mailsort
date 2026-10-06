@@ -33,6 +33,8 @@ export interface AppStatus {
   /** Whether OAuth client ids are configured for each provider. */
   configured: Record<Provider, boolean>
   dataDir: string
+  /** The log file MailSort writes problems to (see Settings, Troubleshooting). */
+  logPath: string
   mcpHttpUrl: string | null
   /** Command + args other MCP clients use to launch MailSort as a stdio MCP server. */
   stdioCommand: { command: string; args: string[]; env: Record<string, string> }
@@ -67,5 +69,9 @@ export interface MailApi {
   chat(turns: ChatTurn[]): Promise<string>
   cancelChat(runId: string): Promise<void>
   openExternal(url: string): Promise<void>
+  /** Shows the folder with the log files. */
+  openLogFolder(): Promise<void>
+  /** Puts the newest log lines on the clipboard; resolves with how many lines. */
+  copyLog(): Promise<number>
   onEvent(listener: (event: AppEvent) => void): () => void
 }
